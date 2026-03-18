@@ -11,7 +11,7 @@ import {
 } from "./dlmm.js";
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
-import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory } from "../lessons.js";
+import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
 import { setPositionInstruction } from "../state.js";
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addToBlacklist, removeFromBlacklist, listBlacklist } from "../token-blacklist.js";
@@ -88,7 +88,13 @@ const toolMap = {
   add_to_blacklist: addToBlacklist,
   remove_from_blacklist: removeFromBlacklist,
   list_blacklist: listBlacklist,
-  add_lesson: ({ rule, tags }) => { addLesson(rule, tags || []); return { saved: true, rule }; },
+  add_lesson: ({ rule, tags, pinned, role }) => {
+    addLesson(rule, tags || [], { pinned: !!pinned, role: role || null });
+    return { saved: true, rule, pinned: !!pinned, role: role || "all" };
+  },
+  pin_lesson:   ({ id }) => pinLesson(id),
+  unpin_lesson: ({ id }) => unpinLesson(id),
+  list_lessons: ({ role, pinned, tag, limit } = {}) => listLessons({ role, pinned, tag, limit }),
   clear_lessons: ({ mode, keyword }) => {
     if (mode === "all") {
       const n = clearAllLessons();

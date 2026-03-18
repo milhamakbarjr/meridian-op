@@ -682,9 +682,12 @@ Use after studying top LPers or observing a pattern worth remembering.
 Lessons are injected into the system prompt on every future cycle.
 Write concrete, actionable rules — not vague observations.
 
+Use 'role' to target a specific agent type so it only appears in the right context.
+Use 'pinned: true' for critical rules that must always be present regardless of memory cap.
+
 Examples:
-- "PREFER: pools where top LPers hold < 30 min — scalping beats holding in high-volatility pairs"
-- "AVOID: entering pools where top performers show avg_hold > 4h and low win_rate — they're stuck"`,
+- rule: "PREFER: pools where top LPers hold < 30 min", tags: ["scalping"], role: "SCREENER"
+- rule: "AVOID: closing when OOR < 30min — price often recovers", tags: ["oor"], role: "MANAGER", pinned: true`,
       parameters: {
         type: "object",
         properties: {
@@ -695,10 +698,71 @@ Examples:
           tags: {
             type: "array",
             items: { type: "string" },
-            description: "Optional tags e.g. ['hold_time', 'scalping', 'pool_type']"
+            description: "Tags e.g. ['narrative', 'screening', 'oor', 'fees', 'management']"
+          },
+          role: {
+            type: "string",
+            enum: ["SCREENER", "MANAGER", "GENERAL"],
+            description: "Which agent role this lesson applies to. Omit for all roles."
+          },
+          pinned: {
+            type: "boolean",
+            description: "Pin this lesson so it's always injected regardless of memory cap. Use for critical rules."
           }
         },
         required: ["rule"]
+      }
+    }
+  },
+
+  // ─── Lesson Management ─────────────────────────────────────────
+
+  {
+    type: "function",
+    function: {
+      name: "list_lessons",
+      description: `Browse saved lessons with optional filters.
+Use to find a lesson ID before pinning/unpinning, or to audit what the agent currently knows.`,
+      parameters: {
+        type: "object",
+        properties: {
+          role:   { type: "string", enum: ["SCREENER", "MANAGER", "GENERAL"], description: "Filter by role" },
+          pinned: { type: "boolean", description: "Filter to only pinned (true) or unpinned (false) lessons" },
+          tag:    { type: "string", description: "Filter by a specific tag" },
+          limit:  { type: "number", description: "Max lessons to return (default 30)" }
+        }
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "pin_lesson",
+      description: `Pin a lesson by ID so it's always injected into the prompt regardless of memory cap.
+Use for critical rules that must never be forgotten — e.g. narrative criteria, hard risk rules.
+Call list_lessons first to find the lesson ID.`,
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Lesson ID (from list_lessons)" }
+        },
+        required: ["id"]
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "unpin_lesson",
+      description: "Unpin a previously pinned lesson. It will re-enter the normal rotation.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Lesson ID to unpin" }
+        },
+        required: ["id"]
       }
     }
   },

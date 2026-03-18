@@ -369,18 +369,76 @@ function nudge(current, target, maxChange) {
 
 /**
  * Add a manual lesson (e.g. from operator observation).
+ *
+ * @param {string}   rule
+ * @param {string[]} tags
+ * @param {Object}   opts
+ * @param {boolean}  opts.pinned - Always inject regardless of cap
+ * @param {string}   opts.role   - "SCREENER" | "MANAGER" | "GENERAL" | null (all roles)
  */
-export function addLesson(rule, tags = []) {
+export function addLesson(rule, tags = [], { pinned = false, role = null } = {}) {
   const data = load();
   data.lessons.push({
     id: Date.now(),
     rule,
     tags,
     outcome: "manual",
+    pinned: !!pinned,
+    role: role || null,
     created_at: new Date().toISOString(),
   });
   save(data);
-  log("lessons", `Manual lesson added: ${rule}`);
+  log("lessons", `Manual lesson added${pinned ? " [PINNED]" : ""}${role ? ` [${role}]` : ""}: ${rule}`);
+}
+
+/**
+ * Pin a lesson by ID — pinned lessons are always injected regardless of cap.
+ */
+export function pinLesson(id) {
+  const data = load();
+  const lesson = data.lessons.find((l) => l.id === id);
+  if (!lesson) return { found: false };
+  lesson.pinned = true;
+  save(data);
+  log("lessons", `Pinned lesson ${id}: ${lesson.rule.slice(0, 60)}`);
+  return { found: true, pinned: true, id, rule: lesson.rule };
+}
+
+/**
+ * Unpin a lesson by ID.
+ */
+export function unpinLesson(id) {
+  const data = load();
+  const lesson = data.lessons.find((l) => l.id === id);
+  if (!lesson) return { found: false };
+  lesson.pinned = false;
+  save(data);
+  return { found: true, pinned: false, id, rule: lesson.rule };
+}
+
+/**
+ * List lessons with optional filters — for agent browsing via Telegram.
+ */
+export function listLessons({ role = null, pinned = null, tag = null, limit = 30 } = {}) {
+  const data = load();
+  let lessons = [...data.lessons];
+
+  if (pinned !== null) lessons = lessons.filter((l) => !!l.pinned === pinned);
+  if (role)            lessons = lessons.filter((l) => !l.role || l.role === role);
+  if (tag)             lessons = lessons.filter((l) => l.tags?.includes(tag));
+
+  return {
+    total: lessons.length,
+    lessons: lessons.slice(-limit).map((l) => ({
+      id: l.id,
+      rule: l.rule.slice(0, 120),
+      tags: l.tags,
+      outcome: l.outcome,
+      pinned: !!l.pinned,
+      role: l.role || "all",
+      created_at: l.created_at?.slice(0, 10),
+    })),
+  };
 }
 
 /**
@@ -430,51 +488,90 @@ export function clearPerformance() {
 
 // ─── Lesson Retrieval ──────────────────────────────────────────
 
+// Tags that map to each agent role — used for role-aware lesson injection
+const ROLE_TAGS = {
+  SCREENER: ["screening", "narrative", "strategy", "deployment", "token", "volume", "entry", "bundler", "holders", "organic"],
+  MANAGER:  ["management", "risk", "oor", "fees", "position", "hold", "close", "pnl", "rebalance", "claim"],
+  GENERAL:  [], // all lessons
+};
+
 /**
  * Get lessons formatted for injection into the system prompt.
+ * Structured injection with three tiers:
+ *   1. Pinned        — always injected, up to PINNED_CAP
+ *   2. Role-matched  — lessons tagged for this agentType, up to ROLE_CAP
+ *   3. Recent        — fill remaining slots up to RECENT_CAP
  *
  * @param {Object} opts
- * @param {string[]} [opts.tags]       - Tag strings to prioritize (e.g. ["spot", "volatility_2"])
- * @param {number}   [opts.maxLessons] - Total cap (default 20)
+ * @param {string} [opts.agentType]  - "SCREENER" | "MANAGER" | "GENERAL"
+ * @param {number} [opts.maxLessons] - Override total cap (default 35)
  */
 export function getLessonsForPrompt(opts = {}) {
   // Support legacy call signature: getLessonsForPrompt(20)
   if (typeof opts === "number") opts = { maxLessons: opts };
 
-  const { tags = [], maxLessons = 20 } = opts;
+  const { agentType = "GENERAL", maxLessons = 35 } = opts;
 
   const data = load();
-
   if (data.lessons.length === 0) return null;
 
-  // Sort: bad/failed lessons first (most important to avoid), then good ones
-  const priority = { bad: 0, poor: 1, failed: 1, good: 2, worked: 2, manual: 1, neutral: 3, evolution: 2 };
-  const sorted = [...data.lessons].sort((a, b) =>
-    (priority[a.outcome] ?? 3) - (priority[b.outcome] ?? 3)
-  );
+  const PINNED_CAP = 10;
+  const ROLE_CAP   = 15;
+  const RECENT_CAP = maxLessons; // fills remaining slots up to total
 
-  let selected;
+  const outcomePriority = { bad: 0, poor: 1, failed: 1, good: 2, worked: 2, manual: 1, neutral: 3, evolution: 2 };
+  const byPriority = (a, b) => (outcomePriority[a.outcome] ?? 3) - (outcomePriority[b.outcome] ?? 3);
 
-  if (tags.length > 0) {
-    // Fill first half of budget with tag-matched lessons, rest with recent ones
-    const tagBudget = Math.floor(maxLessons / 2);
-    const restBudget = maxLessons - tagBudget;
+  // ── Tier 1: Pinned ──────────────────────────────────────────────
+  // Respect role even for pinned lessons — a pinned SCREENER lesson shouldn't pollute MANAGER
+  const pinned = data.lessons
+    .filter((l) => l.pinned && (!l.role || l.role === agentType || agentType === "GENERAL"))
+    .sort(byPriority)
+    .slice(0, PINNED_CAP);
 
-    const matched = sorted.filter((l) =>
-      l.tags && l.tags.some((t) => tags.includes(t))
-    ).slice(0, tagBudget);
+  const usedIds = new Set(pinned.map((l) => l.id));
 
-    const matchedIds = new Set(matched.map((l) => l.id));
-    const rest = sorted.filter((l) => !matchedIds.has(l.id)).slice(0, restBudget);
+  // ── Tier 2: Role-matched ────────────────────────────────────────
+  const roleTags = ROLE_TAGS[agentType] || [];
+  const roleMatched = data.lessons
+    .filter((l) => {
+      if (usedIds.has(l.id)) return false;
+      // Include if: lesson has no role restriction OR matches this role
+      const roleOk = !l.role || l.role === agentType || agentType === "GENERAL";
+      // Include if: lesson has role-relevant tags OR no tags (general)
+      const tagOk  = roleTags.length === 0 || !l.tags?.length || l.tags.some((t) => roleTags.includes(t));
+      return roleOk && tagOk;
+    })
+    .sort(byPriority)
+    .slice(0, ROLE_CAP);
 
-    selected = [...matched, ...rest];
-  } else {
-    selected = sorted.slice(0, maxLessons);
-  }
+  roleMatched.forEach((l) => usedIds.add(l.id));
 
-  return selected.map((l) => {
+  // ── Tier 3: Recent fill ─────────────────────────────────────────
+  const remainingBudget = RECENT_CAP - pinned.length - roleMatched.length;
+  const recent = remainingBudget > 0
+    ? data.lessons
+        .filter((l) => !usedIds.has(l.id))
+        .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+        .slice(0, remainingBudget)
+    : [];
+
+  const selected = [...pinned, ...roleMatched, ...recent];
+  if (selected.length === 0) return null;
+
+  const sections = [];
+  if (pinned.length)      sections.push(`── PINNED (${pinned.length}) ──\n` + fmt(pinned));
+  if (roleMatched.length) sections.push(`── ${agentType} (${roleMatched.length}) ──\n` + fmt(roleMatched));
+  if (recent.length)      sections.push(`── RECENT (${recent.length}) ──\n` + fmt(recent));
+
+  return sections.join("\n\n");
+}
+
+function fmt(lessons) {
+  return lessons.map((l) => {
     const date = l.created_at ? l.created_at.slice(0, 16).replace("T", " ") : "unknown";
-    return `[${l.outcome.toUpperCase()}] [${date}] ${l.rule}`;
+    const pin  = l.pinned ? "📌 " : "";
+    return `${pin}[${l.outcome.toUpperCase()}] [${date}] ${l.rule}`;
   }).join("\n");
 }
 
