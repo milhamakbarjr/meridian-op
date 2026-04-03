@@ -492,6 +492,26 @@ Use when the user says "add smart wallet", "track this wallet", "add to smart wa
   {
     type: "function",
     function: {
+      name: "refresh_smart_wallets",
+      description: `Sweep top-lpers across our previously deployed pools and auto-add any wallet that passes quality criteria (≥65% win rate, ≥10 positions, net-positive PnL, ≥$500 inflow).
+Respects LPAgent free-tier rate limits (~4 req/min). Runs once per call — also fires automatically on a weekly schedule.
+Use when the user says "refresh wallets", "sweep wallets", "find new smart wallets", "update smart wallet list", etc.`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_addresses: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional list of pool addresses to sweep. If omitted, uses pools from pool-memory.json."
+          }
+        }
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
       name: "check_smart_wallets_on_pool",
       description: `Check if any tracked smart wallets have an active position in a given pool.
 Use this before deploying to gauge confidence — if smart wallets are in the pool it's a strong signal.

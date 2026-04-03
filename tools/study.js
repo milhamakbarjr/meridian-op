@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { autoPromoteFromStudy } from "../smart-wallets.js";
 
 const AGENT_MERIDIAN_API = config.api.url;
 const AGENT_MERIDIAN_PUBLIC_KEY =
@@ -30,6 +31,19 @@ export async function studyTopLPers({ pool_address, limit = 4 }) {
   const topLpers = Array.isArray(poolData.topLpers) ? poolData.topLpers : [];
   const historicalOwners = Array.isArray(poolData.historicalOwners) ? poolData.historicalOwners : [];
   const ranked = topLpers.slice(0, Math.max(1, limit));
+
+  // Passive harvest — auto-promote qualifying wallets at zero extra API cost.
+  // Normalize Agent Meridian field names → autoPromoteFromStudy's expected format.
+  const autoAdded = autoPromoteFromStudy(
+    topLpers.map((o) => ({
+      owner: o.owner,
+      win_rate: (o.winRatePct ?? 0) / 100,
+      total_lp: o.totalLp ?? 0,
+      total_pnl: o.totalPnlUsd ?? 0,
+      total_inflow: o.totalInflowUsd ?? 0,
+    })),
+    pool_address
+  );
 
   if (!ranked.length) {
     return {
@@ -99,6 +113,10 @@ export async function studyTopLPers({ pool_address, limit = 4 }) {
       "LPAgent-backed top LP study from Agent Meridian 30m cached owner aggregates plus owner historical positions.",
     patterns,
     lpers,
+    ...(autoAdded.length > 0 && {
+      auto_promoted: autoAdded.length,
+      auto_promoted_addresses: autoAdded,
+    }),
   };
 }
 
