@@ -18,7 +18,7 @@ import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
 import { addToBlacklist, removeFromBlacklist, listBlacklist } from "../token-blacklist.js";
 import { blockDev, unblockDev, listBlockedDevs } from "../dev-blocklist.js";
-import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from "../smart-wallets.js";
+import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool, sweepWalletsFromPools } from "../smart-wallets.js";
 import { getTokenInfo, getTokenHolders, getTokenNarrative } from "./token.js";
 import { config, reloadScreeningThresholds } from "../config.js";
 import fs from "fs";
@@ -53,6 +53,7 @@ const toolMap = {
   remove_smart_wallet: removeSmartWallet,
   list_smart_wallets: listSmartWallets,
   check_smart_wallets_on_pool: checkSmartWalletsOnPool,
+  refresh_smart_wallets: sweepWalletsFromPools,
   claim_fees: claimFees,
   close_position: closePosition,
   get_wallet_balance: getWalletBalances,

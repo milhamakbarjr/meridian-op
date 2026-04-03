@@ -14,7 +14,7 @@ import { generateBriefing } from "./briefing.js";
 import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
-import { checkSmartWalletsOnPool } from "./smart-wallets.js";
+import { checkSmartWalletsOnPool, sweepWalletsFromPools } from "./smart-wallets.js";
 import { getTokenNarrative, getTokenInfo } from "./tools/token.js";
 
 log("startup", "DLMM LP Agent starting...");
@@ -83,6 +83,26 @@ async function runBriefing() {
  * If the agent restarted after the 1:00 AM UTC cron window,
  * fire the briefing immediately on startup so it's never skipped.
  */
+async function runWalletSweep() {
+  log("cron", "Starting weekly smart wallet sweep");
+  try {
+    const result = await sweepWalletsFromPools({});
+    if (!result.success) {
+      log("cron_warn", `Wallet sweep skipped: ${result.error}`);
+      return;
+    }
+    const msg = result.new_wallets.length > 0
+      ? `🧠 Wallet Sweep: ${result.new_wallets.length} new smart wallet(s) added across ${result.swept_pools} pools (${result.total_tracked} total tracked)`
+      : `🧠 Wallet Sweep: no new wallets promoted across ${result.swept_pools} pools (${result.total_tracked} tracked)`;
+    log("cron", msg);
+    if (telegramEnabled() && result.new_wallets.length > 0) {
+      sendMessage(msg).catch(() => {});
+    }
+  } catch (err) {
+    log("cron_error", `Wallet sweep failed: ${err.message}`);
+  }
+}
+
 async function maybeRunMissedBriefing() {
   const todayUtc = new Date().toISOString().slice(0, 10);
   const lastSent = getLastBriefingDate();
@@ -516,6 +536,11 @@ Summarize the current portfolio health, total fees earned, and performance of al
     await maybeRunMissedBriefing();
   }, { timezone: 'UTC' });
 
+  // Weekly smart wallet sweep — every Sunday at 3:00 AM UTC
+  const walletSweepTask = cron.schedule(`0 3 * * 0`, async () => {
+    await runWalletSweep();
+  }, { timezone: 'UTC' });
+
   // Lightweight 30s PnL poller — updates trailing TP state between management cycles, no LLM
   let _pnlPollBusy = false;
   const pnlPollInterval = setInterval(async () => {
@@ -544,7 +569,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
     }
   }, 30_000);
 
-  _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog];
+  _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog, walletSweepTask];
   // Store interval ref so stopCronJobs can clear it
   _cronTasks._pnlPollInterval = pnlPollInterval;
   log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m`);
@@ -800,6 +825,7 @@ Commands:
   /briefing      Show morning briefing (last 24h)
   /learn         Study top LPers from the best current pool and save lessons
   /learn <addr>  Study top LPers from a specific pool address
+  /refresh-wallets  Sweep deployed pools for new smart wallets to track
   /thresholds    Show current screening thresholds + performance stats
   /evolve        Manually trigger threshold evolution from performance data
   /stop          Shut down
@@ -959,6 +985,30 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
           "GENERAL"
         );
         console.log(`\n${reply}\n`);
+      });
+      return;
+    }
+
+    if (input === "/refresh-wallets") {
+      await runBusy(async () => {
+        console.log("\nSweeping top LPers across deployed pools...\n");
+        const result = await sweepWalletsFromPools({});
+        if (!result.success) {
+          console.log(`Sweep skipped: ${result.error}\n`);
+          return;
+        }
+        console.log(`Swept ${result.swept_pools} pool(s):`);
+        for (const d of result.details) {
+          const label = d.error ? `ERROR: ${d.error}` : `${d.lpers_checked} LPers, ${d.new_wallets} promoted`;
+          console.log(`  ${d.pool.slice(0, 8)}...  ${label}`);
+        }
+        if (result.new_wallets.length > 0) {
+          console.log(`\n✅ Added ${result.new_wallets.length} new smart wallet(s):`);
+          for (const addr of result.new_wallets) console.log(`  ${addr}`);
+        } else {
+          console.log("\nNo new wallets met the criteria this run.");
+        }
+        console.log(`\nTotal tracked: ${result.total_tracked}/${20}\n`);
       });
       return;
     }
