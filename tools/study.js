@@ -3,6 +3,8 @@
  * Used by the /learn command — not called on every cycle.
  */
 
+import { autoPromoteFromStudy } from "../smart-wallets.js";
+
 const LPAGENT_API = "https://api.lpagent.io/open-api/v1";
 const LPAGENT_KEYS = (process.env.LPAGENT_API_KEY || "").split(",").map(k => k.trim()).filter(Boolean);
 let _keyIndex = 0;
@@ -39,6 +41,9 @@ export async function studyTopLPers({ pool_address, limit = 4 }) {
 
   const topData = await topRes.json();
   const all = topData.data || [];
+
+  // Passive harvest — auto-promote qualifying wallets at zero extra API cost
+  const autoAdded = autoPromoteFromStudy(all, pool_address);
 
   // Filter to LPers with enough data to be meaningful
   const credible = all.filter(
@@ -128,6 +133,10 @@ export async function studyTopLPers({ pool_address, limit = 4 }) {
     pool: pool_address,
     patterns,
     lpers: historicalSamples,
+    ...(autoAdded.length > 0 && {
+      auto_promoted: autoAdded.length,
+      auto_promoted_addresses: autoAdded,
+    }),
   };
 }
 
