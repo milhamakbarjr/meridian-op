@@ -485,11 +485,16 @@ export async function runScreeningCycle({ silent = false } = {}) {
         log("screening", `Bot-holder filter: dropped ${pool.name} — bots ${botPct}% > ${maxBotHoldersPct}%`);
         return false;
       }
+      const maxVol = config.screening.maxVolatility;
+      if (pool.volatility != null && maxVol != null && pool.volatility > maxVol) {
+        log("screening", `Volatility filter: dropped ${pool.name} — volatility ${pool.volatility} > ${maxVol}`);
+        return false;
+      }
       return true;
     });
 
     if (passing.length === 0) {
-      screenReport = `No candidates available (all blocked by launchpad filter).`;
+      screenReport = `No candidates available (all dropped by hard filters).`;
       return screenReport;
     }
 

@@ -124,8 +124,8 @@ client.on("messageCreate", async (message) => {
   if (!CHANNEL_IDS.includes(message.channelId)) return;
   // Skip own messages
   if (message.author?.id === client.user?.id) return;
-  // Only process messages from Metlex Pool Bot
-  if (message.author?.username !== "Metlex Pool Bot") return;
+  // Only process messages from Metlex DLMM bot
+  if (message.author?.username !== "Metlex DLMM") return;
 
   const content = message.content || "";
   const embeds = message.embeds?.map(e => `${e.title || ""} ${e.description || ""}`).join(" ") || "";

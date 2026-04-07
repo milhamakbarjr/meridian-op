@@ -139,6 +139,14 @@ export async function deployPosition({
   const { StrategyType } = await getDLMM();
   const wallet = getWallet();
   const pool = await getPool(pool_address);
+  // Reject non-SOL quote pools — wallet only holds SOL
+  const quoteMint = pool.lbPair.tokenYMint.toString();
+  const { config } = await import("../config.js");
+  if (quoteMint !== config.tokens.SOL) {
+    log("deploy", `Pool ${pool_address.slice(0, 8)} has non-SOL quote token (${quoteMint.slice(0, 8)}) — skipping`);
+    return { success: false, error: `Pool quote token is not SOL (${quoteMint.slice(0, 8)}). Only SOL-quoted pools supported.` };
+  }
+
   const baseMint = pool.lbPair.tokenXMint.toString();
   if (isBaseMintOnCooldown(baseMint)) {
     log("deploy", `Base mint ${baseMint.slice(0, 8)} is on cooldown — skipping deploy for pool ${pool_address.slice(0, 8)}`);

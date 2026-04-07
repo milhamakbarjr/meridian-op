@@ -406,6 +406,14 @@ async function runSafetyChecks(name, args) {
         }
       }
 
+      // Reject non-SOL quote pools (wallet only holds SOL)
+      if (args.quote_mint && args.quote_mint !== config.tokens.SOL) {
+        return {
+          pass: false,
+          reason: `Pool quote token ${args.quote_mint} is not SOL. Only SOL-quoted pools are supported.`,
+        };
+      }
+
       // Check amount limits
       const amountY = args.amount_y ?? args.amount_sol ?? 0;
       if (amountY <= 0) {

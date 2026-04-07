@@ -125,6 +125,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
 
   const eligible = pools
     .filter((p) => {
+      if (p.quote?.mint !== config.tokens.SOL) return false;  // SOL pairs only
       if (occupiedPools.has(p.pool) || occupiedMints.has(p.base?.mint)) return false;
       if (isPoolOnCooldown(p.pool)) {
         log("screening", `Filtered cooldown pool ${p.name} (${p.pool.slice(0, 8)})`);
