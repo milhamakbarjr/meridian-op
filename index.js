@@ -474,13 +474,15 @@ export async function runScreeningCycle({ silent = false } = {}) {
         filteredOut.push({ name: pool.name, reason: `bot holders ${botPct}% > ${maxBotHoldersPct}%` });
         return false;
       }
+      const maxVol = config.screening.maxVolatility;
+      if (pool.volatility != null && maxVol != null && pool.volatility > maxVol) {
+        log("screening", `Volatility filter: dropped ${pool.name} — volatility ${pool.volatility} > ${maxVol}`);
+        return false;
+      }
       return true;
     });
 
     if (passing.length === 0) {
-      const examples = filteredOut.slice(0, 3)
-        .map((entry) => `- ${entry.name}: ${entry.reason}`)
-        .join("\n");
       const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
       const combinedExamples = combined.slice(0, 3)
         .map((entry) => `- ${entry.name}: ${entry.reason}`)

@@ -148,6 +148,17 @@ export function recordPoolDeploy(poolAddress, deployData) {
     entry.base_mint = deployData.base_mint;
   }
 
+  // Set cooldown for stop-loss closes — token is actively dumping, block base mint for 24h
+  if (String(deploy.close_reason || "").toLowerCase().includes("stop loss")) {
+    const slCooldownHours = config.management.stopLossCooldownHours ?? 24;
+    const reason = "stop loss";
+    setPoolCooldown(entry, slCooldownHours, reason);
+    if (entry.base_mint) {
+      const mintCooldownUntil = setBaseMintCooldown(db, entry.base_mint, slCooldownHours, reason);
+      log("pool-memory", `Stop-loss cooldown: ${entry.name} + mint ${entry.base_mint.slice(0, 8)} blocked for ${slCooldownHours}h until ${mintCooldownUntil}`);
+    }
+  }
+
   // Set cooldown for low yield closes — pool wasn't profitable enough, don't redeploy soon
   if (deploy.close_reason === "low yield") {
     const cooldownHours = 4;

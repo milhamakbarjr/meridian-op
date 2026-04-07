@@ -275,6 +275,10 @@ export async function getTopCandidates({ limit = 10 } = {}) {
 
   const eligible = pools
     .filter((p) => {
+      if (p.quote?.mint !== config.tokens.SOL) {
+        pushFilteredReason(filteredOut, p, "non-SOL quote token");
+        return false;
+      }
       if (occupiedPools.has(p.pool)) {
         pushFilteredReason(filteredOut, p, "already have an open position in this pool");
         return false;
