@@ -267,14 +267,7 @@ export async function runManagementCycle({ silent = false } = {}) {
     for (const p of positionData) {
       // Hard exit — highest priority
       if (exitMap.has(p.position)) {
-        const indicatorConfirmation = await confirmExitIndicator(p, exitMap.get(p.position));
-        if (!indicatorConfirmation.confirmed) {
-          actionMap.set(p.position, {
-            action: "STAY",
-            indicatorHold: indicatorConfirmation.reason,
-          });
-          continue;
-        }
+        // Trailing TP exits bypass indicator — they have their own peak-drop reversal detection
         actionMap.set(p.position, { action: "CLOSE", rule: "exit", reason: exitMap.get(p.position) });
         continue;
       }
@@ -286,13 +279,18 @@ export async function runManagementCycle({ silent = false } = {}) {
 
       const closeRule = getDeterministicCloseRule(p, config.management);
       if (closeRule) {
-        const indicatorConfirmation = await confirmExitIndicator(p, closeRule.reason);
-        if (!indicatorConfirmation.confirmed) {
-          actionMap.set(p.position, {
-            action: "STAY",
-            indicatorHold: indicatorConfirmation.reason,
-          });
-          continue;
+        // Only gate OOR-wait (rule 4) and low-yield (rule 5) behind indicator
+        // SL (1), TP (2), pumped far above (3) bypass — indicator structurally opposes these
+        const needsIndicator = closeRule.rule === 4 || closeRule.rule === 5;
+        if (needsIndicator) {
+          const indicatorConfirmation = await confirmExitIndicator(p, closeRule.reason);
+          if (!indicatorConfirmation.confirmed) {
+            actionMap.set(p.position, {
+              action: "STAY",
+              indicatorHold: indicatorConfirmation.reason,
+            });
+            continue;
+          }
         }
         actionMap.set(p.position, closeRule);
         continue;
@@ -764,11 +762,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         }
         const exit = updatePnlAndCheckExits(p.position, p, config.management);
         if (exit) {
-          const indicatorConfirmation = await confirmExitIndicator(p, exit.reason);
-          if (!indicatorConfirmation.confirmed) {
-            log("state", `[PnL poll] Exit alert suppressed by indicators: ${p.pair} — ${indicatorConfirmation.reason}`);
-            continue;
-          }
+          // Trailing TP exits bypass indicator — they have their own peak-drop reversal detection
           if (exit.action === "TRAILING_TP" && exit.needs_confirmation) {
             if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
               scheduleTrailingDropConfirmation(p.position);
@@ -788,10 +782,14 @@ Summarize the current portfolio health, total fees earned, and performance of al
         }
         const closeRule = getDeterministicCloseRule(p, config.management);
         if (closeRule) {
-          const indicatorConfirmation = await confirmExitIndicator(p, closeRule.reason);
-          if (!indicatorConfirmation.confirmed) {
-            log("state", `[PnL poll] Deterministic close suppressed by indicators: ${p.pair} — ${indicatorConfirmation.reason}`);
-            continue;
+          // Only gate OOR-wait (rule 4) and low-yield (rule 5) behind indicator
+          const needsIndicator = closeRule.rule === 4 || closeRule.rule === 5;
+          if (needsIndicator) {
+            const indicatorConfirmation = await confirmExitIndicator(p, closeRule.reason);
+            if (!indicatorConfirmation.confirmed) {
+              log("state", `[PnL poll] Deterministic close suppressed by indicators: ${p.pair} — ${indicatorConfirmation.reason}`);
+              continue;
+            }
           }
           const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
           const sinceLastTrigger = Date.now() - _pollTriggeredAt;

@@ -316,7 +316,7 @@ export function evolveThresholds(perfData, config) {
       if (loserP25 < current) {
         // Tighten: new ceiling = loserP25 + a small buffer
         const target  = loserP25 * 1.15;
-        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 1.0, 20.0);
+        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 5.0, 20.0);
         const rounded = Number(newVal.toFixed(1));
         if (rounded < current) {
           changes.maxVolatility = rounded;
@@ -328,7 +328,7 @@ export function evolveThresholds(perfData, config) {
       const winnerP75 = percentile(winnerVols, 75);
       if (winnerP75 > current * 1.1) {
         const target  = winnerP75 * 1.1;
-        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 1.0, 20.0);
+        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 5.0, 20.0);
         const rounded = Number(newVal.toFixed(1));
         if (rounded > current) {
           changes.maxVolatility = rounded;
