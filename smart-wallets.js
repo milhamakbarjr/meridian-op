@@ -2,24 +2,14 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { log } from "./logger.js";
+import { config } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WALLETS_PATH = path.join(__dirname, "smart-wallets.json");
 const POOL_MEMORY_PATH = path.join(__dirname, "pool-memory.json");
 
-// ── LPAgent API (free-tier safe) ────────────────────────────────────────────
-const LPAGENT_API = "https://api.lpagent.io/open-api/v1";
-const LPAGENT_KEYS = (process.env.LPAGENT_API_KEY || "").split(",").map(k => k.trim()).filter(Boolean);
-let _lpKeyIndex = 0;
-function nextLpKey() {
-  if (!LPAGENT_KEYS.length) return null;
-  const key = LPAGENT_KEYS[_lpKeyIndex % LPAGENT_KEYS.length];
-  _lpKeyIndex++;
-  return key;
-}
-
-// 13s between calls ≈ 4 req/min — comfortably under the ~5 req/min free-tier limit
-const SWEEP_SLEEP_MS = 13_000;
+// Small delay between pool calls to avoid hammering the relay
+const SWEEP_SLEEP_MS = 2_000;
 const MAX_TRACKED_WALLETS = 20;
 
 // Promotion criteria — stricter than study_top_lpers filters
@@ -176,16 +166,17 @@ export function autoPromoteFromStudy(lpers, poolAddress) {
 
 /**
  * Active sweep: call top-lpers on a list of pools, auto-promote qualifiers.
- * Respects free-tier rate limits (~4 req/min) via SWEEP_SLEEP_MS delay.
+ * Uses Agent Meridian relay (same key as study.js) — no direct LPAgent auth needed.
  * Falls back to pool-memory.json if no pool_addresses provided.
  *
  * @param {string[]} [pool_addresses] Pool addresses to sweep. Defaults to pool-memory keys.
  * @returns {{ success, swept_pools, new_wallets, total_tracked, details }}
  */
 export async function sweepWalletsFromPools({ pool_addresses } = {}) {
-  const key = nextLpKey();
-  if (!key) {
-    return { success: false, error: "LPAGENT_API_KEY not set — wallet sweep disabled", new_wallets: [] };
+  const meridianUrl = config.api.url;
+  const meridianKey = config.api.publicApiKey;
+  if (!meridianKey) {
+    return { success: false, error: "Agent Meridian publicApiKey not set — wallet sweep disabled", new_wallets: [] };
   }
 
   // Resolve pool list: explicit param → pool-memory.json → empty
@@ -207,7 +198,7 @@ export async function sweepWalletsFromPools({ pool_addresses } = {}) {
     };
   }
 
-  log("smart_wallets", `Starting wallet sweep across ${pools.length} pools`);
+  log("smart_wallets", `Starting wallet sweep across ${pools.length} pools via Agent Meridian relay`);
   const allNew = [];
   const details = [];
 
@@ -215,8 +206,8 @@ export async function sweepWalletsFromPools({ pool_addresses } = {}) {
     const poolAddr = pools[i];
     try {
       const res = await fetch(
-        `${LPAGENT_API}/pools/${poolAddr}/top-lpers?sort_order=desc&page=1&limit=100`,
-        { headers: { "x-api-key": nextLpKey() } }
+        `${meridianUrl}/top-lp/${poolAddr}`,
+        { headers: { "x-api-key": meridianKey } }
       );
 
       if (res.status === 429) {
@@ -229,7 +220,15 @@ export async function sweepWalletsFromPools({ pool_addresses } = {}) {
         details.push({ pool: poolAddr, error: `HTTP ${res.status}` });
       } else {
         const j = await res.json();
-        const lpers = j.data || [];
+        const raw = Array.isArray(j.topLpers) ? j.topLpers : [];
+        // Normalize Agent Meridian field names → autoPromoteFromStudy's expected format
+        const lpers = raw.map((o) => ({
+          owner: o.owner,
+          win_rate: (o.winRatePct ?? 0) / 100,
+          total_lp: o.totalLp ?? 0,
+          total_pnl: o.totalPnlUsd ?? 0,
+          total_inflow: o.totalInflowUsd ?? 0,
+        }));
         const added = autoPromoteFromStudy(lpers, poolAddr);
         allNew.push(...added);
         details.push({ pool: poolAddr, lpers_checked: lpers.length, new_wallets: added.length });
