@@ -214,7 +214,6 @@ export async function deployPosition({
   amount_sol, // legacy: will be used as amount_y if amount_y is not provided
   amount_x,
   amount_y,
-  strategy,
   bins_below,
   bins_above,
   downside_pct,
@@ -229,7 +228,7 @@ export async function deployPosition({
   initial_value_usd,
 }) {
   pool_address = normalizeMint(pool_address);
-  const activeStrategy = strategy || config.strategy.strategy;
+  const activeStrategy = config.strategy.strategy;
   let activeBinsBelow = bins_below ?? config.strategy.binsBelow;
   let activeBinsAbove = bins_above ?? 0;
 
