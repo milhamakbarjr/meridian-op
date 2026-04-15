@@ -491,6 +491,43 @@ export function setLastBriefingDate() {
 }
 
 /**
+ * Record a failed close attempt for a position.
+ * After MAX_CLOSE_FAILURES attempts, the position is marked as a ghost.
+ */
+const MAX_CLOSE_FAILURES = 3;
+
+export function recordCloseFailure(position_address) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return;
+  pos.close_failure_count = (pos.close_failure_count || 0) + 1;
+  pos.last_close_failure_at = new Date().toISOString();
+  if (pos.close_failure_count >= MAX_CLOSE_FAILURES) {
+    pos.ghost = true;
+    pos.notes.push(`Marked ghost after ${pos.close_failure_count} failed close attempts at ${pos.last_close_failure_at}`);
+    log("state", `Position ${position_address} marked as ghost after ${pos.close_failure_count} failed close attempts`);
+  }
+  save(state);
+}
+
+/**
+ * Returns true if a position has exceeded the max close failure threshold.
+ */
+export function isGhostPosition(position_address) {
+  const state = load();
+  const pos = state.positions[position_address];
+  return !!(pos && pos.ghost === true);
+}
+
+/**
+ * Returns all open positions marked as ghosts.
+ */
+export function getGhostPositions() {
+  const state = load();
+  return Object.values(state.positions).filter((p) => !p.closed && p.ghost === true);
+}
+
+/**
  * Reconcile local state with actual on-chain positions.
  * Marks any local open positions as closed if they are not in the on-chain list.
  */

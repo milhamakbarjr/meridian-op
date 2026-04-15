@@ -487,6 +487,7 @@ export async function deployPosition({
   log("deploy", `Amount: ${finalAmountX} X, ${finalAmountY} Y`);
   log("deploy", `Position: ${newPosition.publicKey.toString()}`);
 
+  let phase1Complete = false; // tracks whether Phase 1 (empty position account creation) succeeded
   try {
     const txHashes = [];
 
@@ -511,6 +512,7 @@ export async function deployPosition({
         txHashes.push(txHash);
         log("deploy", `Create tx ${i + 1}/${createTxArray.length}: ${txHash}`);
       }
+      phase1Complete = true; // Phase 1 succeeded — empty account now exists on-chain
 
       // Phase 2: Add liquidity (may be multiple txs)
       const addTxs = await pool.addLiquidityByStrategyChunkable({
@@ -606,6 +608,21 @@ export async function deployPosition({
     };
   } catch (error) {
     log("deploy_error", error.message);
+    // If Phase 1 (create empty position) succeeded but Phase 2 (add liquidity) failed,
+    // attempt to close the empty position account to prevent it becoming a ghost.
+    // Best-effort — if this also fails, the ghost failsafe in state.js will catch it.
+    if (isWideRange && phase1Complete) {
+      try {
+        log("deploy", `Phase 2 failed — attempting to clean up empty position account ${newPosition.publicKey.toString()}`);
+        await pool.closePosition({
+          owner: wallet.publicKey,
+          position: { publicKey: newPosition.publicKey },
+        });
+        log("deploy", `Empty position account cleaned up successfully`);
+      } catch (cleanupErr) {
+        log("deploy_error", `Cleanup of empty position account failed: ${cleanupErr.message} — ghost detection will handle it`);
+      }
+    }
     return { success: false, error: error.message };
   }
 }
@@ -1195,6 +1212,7 @@ export async function closePosition({ position_address, reason }) {
       if (!closedConfirmed) {
         return {
           success: false,
+          verification_timeout: true,
           error: "Close submit succeeded but position still appears open after verification window",
           position: position_address,
           pool: poolAddress,
@@ -1421,6 +1439,7 @@ export async function closePosition({ position_address, reason }) {
     if (!closedConfirmed) {
       return {
         success: false,
+        verification_timeout: true,
         error: "Close transactions sent but position still appears open after verification window",
         position: position_address,
         pool: poolAddress,

@@ -12,7 +12,7 @@ import {
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction } from "../state.js";
+import { setPositionInstruction, recordCloseFailure, isGhostPosition } from "../state.js";
 
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
@@ -366,6 +366,13 @@ export async function executeTool(name, args) {
       }
     }
 
+    // Track close failures for ghost position detection.
+    // Only count hard failures — not verification timeouts where transactions were likely submitted.
+    // Verification timeouts set verification_timeout: true; syncOpenPositions() will reconcile those.
+    if (!success && name === "close_position" && args.position_address && !result?.verification_timeout) {
+      recordCloseFailure(args.position_address);
+    }
+
     return result;
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -377,6 +384,11 @@ export async function executeTool(name, args) {
       duration_ms: duration,
       success: false,
     });
+
+    // Track close failures even on exceptions
+    if (name === "close_position" && args.position_address) {
+      recordCloseFailure(args.position_address);
+    }
 
     // Return error to LLM so it can decide what to do
     return {
@@ -404,7 +416,9 @@ async function runSafetyChecks(name, args) {
 
       // Check position count limit + duplicate pool guard — force fresh scan to avoid stale cache
       const positions = await getMyPositions({ force: true });
-      if (positions.total_positions >= config.risk.maxPositions) {
+      // Ghost positions don't count toward the limit — they can't be closed and should not block deploys
+      const nonGhostCount = positions.positions.filter((p) => !isGhostPosition(p.position)).length;
+      if (nonGhostCount >= config.risk.maxPositions) {
         return {
           pass: false,
           reason: `Max positions (${config.risk.maxPositions}) reached. Close a position first.`,
@@ -477,6 +491,17 @@ async function runSafetyChecks(name, args) {
         }
       }
 
+      return { pass: true };
+    }
+
+    case "close_position": {
+      // Block close attempts on ghost positions — they can't be closed via the relay
+      if (args.position_address && isGhostPosition(args.position_address)) {
+        return {
+          pass: false,
+          reason: `Position ${args.position_address.slice(0, 8)}... is marked as a ghost (${3}+ failed close attempts). Skipping — manual cleanup required.`,
+        };
+      }
       return { pass: true };
     }
 

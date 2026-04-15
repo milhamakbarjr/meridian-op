@@ -11,7 +11,7 @@ import { evolveThresholds, getPerformanceSummary } from "./lessons.js";
 import { executeTool, registerCronRestarter } from "./tools/executor.js";
 import { startPolling, stopPolling, sendMessage, sendHTML, notifyOutOfRange, isEnabled as telegramEnabled, createLiveMessage } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
-import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
+import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop, isGhostPosition } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
 import { checkSmartWalletsOnPool, sweepWalletsFromPools } from "./smart-wallets.js";
@@ -65,6 +65,7 @@ function buildPrompt() {
 let _cronTasks = [];
 let _managementBusy = false; // prevents overlapping management cycles
 let _screeningBusy = false;  // prevents overlapping screening cycles
+const _ghostsAlerted = new Set(); // tracks positions for which we've already sent the ghost alert
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
 let _pollTriggeredAt = 0; // epoch ms — cooldown for poller-triggered management
 const _peakConfirmTimers = new Map();
@@ -236,11 +237,32 @@ export async function runManagementCycle({ silent = false } = {}) {
       return mgmtReport;
     }
 
-    // Snapshot + load pool memory
-    const positionData = positions.map((p) => {
-      recordPositionSnapshot(p.pool, p);
-      return { ...p, recall: recallForPool(p.pool) };
-    });
+    // Snapshot + load pool memory — skip ghost positions entirely
+    const ghostsDetected = positions.filter((p) => isGhostPosition(p.position));
+    for (const ghost of ghostsDetected) {
+      log("cron", `Ghost position detected — skipping management: ${ghost.pair || ghost.pool} (${ghost.position})`);
+    }
+    // Fire Telegram alert once per ghost position (in-memory guard prevents repeat alerts)
+    for (const ghost of ghostsDetected) {
+      if (!_ghostsAlerted.has(ghost.position)) {
+        _ghostsAlerted.add(ghost.position);
+        sendMessage(`⚠️ Ghost position detected: <b>${ghost.pair || ghost.pool}</b>\n<code>${ghost.position}</code>\nFailed to close 3+ times. Skipping management — manual cleanup may be needed on Meteora.`).catch(() => {});
+      }
+    }
+
+    const positionData = positions
+      .filter((p) => !isGhostPosition(p.position))
+      .map((p) => {
+        recordPositionSnapshot(p.pool, p);
+        return { ...p, recall: recallForPool(p.pool) };
+      });
+
+    if (positionData.length === 0) {
+      log("cron", "All on-chain positions are ghosts — skipping management, triggering screening");
+      mgmtReport = "All active positions are ghosts. Skipping management.";
+      runScreeningCycle().catch((e) => log("cron_error", `Ghost-skip screening failed: ${e.message}`));
+      return mgmtReport;
+    }
 
     // JS trailing TP check
     const exitMap = new Map();
@@ -376,9 +398,9 @@ After executing, write a brief one-line result per position.
       await liveMessage?.note("No tool actions needed.");
     }
 
-    // Trigger screening after management
+    // Trigger screening after management (excluding ghost positions from count)
     const afterPositions = await getMyPositions({ force: true }).catch(() => null);
-    const afterCount = afterPositions?.positions?.length ?? 0;
+    const afterCount = (afterPositions?.positions || []).filter((p) => !isGhostPosition(p.position)).length;
     if (afterCount < config.risk.maxPositions && Date.now() - _screeningLastTriggered > screeningCooldownMs) {
       log("cron", `Post-management: ${afterCount}/${config.risk.maxPositions} positions — triggering screening`);
       runScreeningCycle().catch((e) => log("cron_error", `Triggered screening failed: ${e.message}`));
@@ -417,14 +439,16 @@ export async function runScreeningCycle({ silent = false } = {}) {
   let screenReport = null;
   try {
     [prePositions, preBalance] = await Promise.all([getMyPositions({ force: true }), getWalletBalances()]);
-    if (prePositions.total_positions >= config.risk.maxPositions) {
-      log("cron", `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`);
-      screenReport = `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions}).`;
+    // Ghost positions don't count toward the limit — they can't be closed and should not block deploys
+    const nonGhostPositionCount = (prePositions.positions || []).filter((p) => !isGhostPosition(p.position)).length;
+    if (nonGhostPositionCount >= config.risk.maxPositions) {
+      log("cron", `Screening skipped — max positions reached (${nonGhostPositionCount}/${config.risk.maxPositions})`);
+      screenReport = `Screening skipped — max positions reached (${nonGhostPositionCount}/${config.risk.maxPositions}).`;
       appendDecision({
         type: "skip",
         actor: "SCREENER",
         summary: "Screening skipped",
-        reason: `Max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`,
+        reason: `Max positions reached (${nonGhostPositionCount}/${config.risk.maxPositions})`,
       });
       _screeningBusy = false;
       return screenReport;
@@ -619,7 +643,7 @@ ${candidateBlocks.join("\n\n")}
 STEPS:
 1. Pick the best candidate based on narrative quality, smart wallets, and pool metrics.
 2. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
-   bins_below = round(35 + (volatility/5)*55) clamped to [35,90].
+   bins_below = round(35 + (volatility/5)*55) clamped to [55,90]. Minimum 55 bins regardless of volatility.
    For single-side SOL deploys, do not invent upside:
    set amount_y only, keep amount_x = 0, keep bins_above = 0, and let the upper bin stay at the active bin.
 3. Report in this exact format (no tables, no extra sections):
@@ -757,6 +781,9 @@ Summarize the current portfolio health, total fees earned, and performance of al
       const result = await getMyPositions({ force: true, silent: true }).catch(() => null);
       if (!result?.positions?.length) return;
       for (const p of result.positions) {
+        // Skip ghost positions — they can't be closed and generate noise
+        if (isGhostPosition(p.position)) continue;
+
         if (!p.pnl_pct_suspicious && queuePeakConfirmation(p.position, p.pnl_pct)) {
           schedulePeakConfirmation(p.position);
         }
@@ -769,12 +796,16 @@ Summarize the current portfolio health, total fees earned, and performance of al
             }
             continue;
           }
+          // Stop loss bypasses the cooldown — act immediately regardless of when the last cycle ran.
+          // The 30-min cooldown was the root cause of stop loss slippage: token dumps fast, poller
+          // detects it every 30s but is blocked if a cycle ran recently for a different reason.
+          const isStopLoss = exit.action === "STOP_LOSS";
           const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
           const sinceLastTrigger = Date.now() - _pollTriggeredAt;
-          if (sinceLastTrigger >= cooldownMs) {
+          if (isStopLoss || sinceLastTrigger >= cooldownMs) {
             _pollTriggeredAt = Date.now();
-            log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason} — triggering management`);
-            runManagementCycle({ silent: true }).catch((e) => log("cron_error", `Poll-triggered management failed: ${e.message}`));
+            log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason}${isStopLoss ? " ⚡ STOP LOSS — bypassing cooldown" : ""} — triggering management`);
+            runManagementCycle({ silent: false }).catch((e) => log("cron_error", `Poll-triggered management failed: ${e.message}`));
           } else {
             log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason} — cooldown (${Math.round((cooldownMs - sinceLastTrigger) / 1000)}s left)`);
           }
@@ -1025,7 +1056,7 @@ async function deployLatestCandidate(index) {
     throw new Error("Invalid candidate index. Run /screen first.");
   }
   const deployAmount = computeDeployAmount((await getWalletBalances()).sol);
-  const binsBelow = Math.max(35, Math.min(90, Math.round(35 + ((Number(candidate.volatility) || 0) / 5) * 55)));
+  const binsBelow = Math.max(55, Math.min(90, Math.round(35 + ((Number(candidate.volatility) || 0) / 5) * 55)));
   const result = await executeTool("deploy_position", {
     pool_address: candidate.pool,
     amount_y: deployAmount,
