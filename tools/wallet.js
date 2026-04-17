@@ -47,45 +47,73 @@ export async function getWalletBalances() {
     return { wallet: walletAddress, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: "Helius API key missing" };
   }
 
-  try {
-    const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
-    const res = await fetch(url);
-    
-    if (!res.ok) {
-      throw new Error(`Helius API error: ${res.status} ${res.statusText}`);
+  const heliusUrl = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
+
+  // ─── Helius REST API (2 attempts) ────────────────────────
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(heliusUrl);
+      if (!res.ok) throw new Error(`Helius API error: ${res.status} ${res.statusText}`);
+
+      const data = await res.json();
+      const balances = data.balances || [];
+
+      const solEntry = balances.find(b => b.mint === config.tokens.SOL || b.symbol === "SOL");
+      const usdcEntry = balances.find(b => b.mint === config.tokens.USDC || b.symbol === "USDC");
+
+      const solBalance = solEntry?.balance || 0;
+      const solPrice = solEntry?.pricePerToken || 0;
+      const solUsd = solEntry?.usdValue || 0;
+      const usdcBalance = usdcEntry?.balance || 0;
+
+      const enrichedTokens = balances.map(b => ({
+        mint: b.mint,
+        symbol: b.symbol || b.mint.slice(0, 8),
+        balance: b.balance,
+        usd: b.usdValue ? Math.round(b.usdValue * 100) / 100 : null,
+      }));
+
+      return {
+        wallet: walletAddress,
+        sol: Math.round(solBalance * 1e6) / 1e6,
+        sol_price: Math.round(solPrice * 100) / 100,
+        sol_usd: Math.round(solUsd * 100) / 100,
+        usdc: Math.round(usdcBalance * 100) / 100,
+        tokens: enrichedTokens,
+        total_usd: Math.round((data.totalUsdValue || 0) * 100) / 100,
+      };
+    } catch (err) {
+      log("wallet_warn", `Helius attempt ${attempt + 1} failed: ${err.message}`);
+      if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
     }
+  }
 
-    const data = await res.json();
-    const balances = data.balances || [];
+  // ─── Fallback: RPC getBalance + Jupiter price ─────────────
+  try {
+    log("wallet_warn", "Helius unavailable — falling back to RPC getBalance");
+    const conn = getConnection();
+    const lamports = await conn.getBalance(getWallet().publicKey);
+    const solBalance = lamports / LAMPORTS_PER_SOL;
 
-    // ─── Find SOL and USDC ────────────────────────────────────
-    const solEntry = balances.find(b => b.mint === config.tokens.SOL || b.symbol === "SOL");
-    const usdcEntry = balances.find(b => b.mint === config.tokens.USDC || b.symbol === "USDC");
-
-    const solBalance = solEntry?.balance || 0;
-    const solPrice = solEntry?.pricePerToken || 0;
-    const solUsd = solEntry?.usdValue || 0;
-    const usdcBalance = usdcEntry?.balance || 0;
-
-    // ─── Map all tokens ───────────────────────────────────────
-    const enrichedTokens = balances.map(b => ({
-      mint: b.mint,
-      symbol: b.symbol || b.mint.slice(0, 8),
-      balance: b.balance,
-      usd: b.usdValue ? Math.round(b.usdValue * 100) / 100 : null,
-    }));
+    let solPrice = 0;
+    try {
+      const priceRes = await fetch(`${JUPITER_PRICE_API}?ids=${SOL_MINT}`);
+      const priceData = await priceRes.json();
+      solPrice = priceData?.data?.[SOL_MINT]?.price || 0;
+    } catch { /* price is optional */ }
 
     return {
       wallet: walletAddress,
       sol: Math.round(solBalance * 1e6) / 1e6,
       sol_price: Math.round(solPrice * 100) / 100,
-      sol_usd: Math.round(solUsd * 100) / 100,
-      usdc: Math.round(usdcBalance * 100) / 100,
-      tokens: enrichedTokens,
-      total_usd: Math.round((data.totalUsdValue || 0) * 100) / 100,
+      sol_usd: Math.round(solBalance * solPrice * 100) / 100,
+      usdc: 0,
+      tokens: [],
+      total_usd: Math.round(solBalance * solPrice * 100) / 100,
+      _fallback: true,
     };
-  } catch (error) {
-    log("wallet_error", error.message);
+  } catch (fallbackErr) {
+    log("wallet_error", `RPC fallback also failed: ${fallbackErr.message}`);
     return {
       wallet: walletAddress,
       sol: 0,
@@ -94,7 +122,7 @@ export async function getWalletBalances() {
       usdc: 0,
       tokens: [],
       total_usd: 0,
-      error: error.message,
+      error: fallbackErr.message,
     };
   }
 }

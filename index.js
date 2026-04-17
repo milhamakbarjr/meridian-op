@@ -22,6 +22,16 @@ import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnable
 import { appendDecision } from "./decision-log.js";
 import { confirmIndicatorPreset } from "./tools/chart-indicators.js";
 
+process.on("unhandledRejection", (err) => {
+  log("unhandled_rejection", `${err?.message || err}`);
+});
+
+process.on("uncaughtException", (err) => {
+  log("uncaught_exception", `${err?.message || err}`);
+  if (err?.code === "ECONNRESET" || err?.code === "ETIMEDOUT" || err?.code === "ENOTFOUND") return;
+  process.exit(1);
+});
+
 log("startup", "DLMM LP Agent starting...");
 log("startup", `Mode: ${process.env.DRY_RUN === "true" ? "DRY RUN" : "LIVE"}`);
 log("startup", `Model: ${process.env.LLM_MODEL || "hermes-3-405b"}`);
