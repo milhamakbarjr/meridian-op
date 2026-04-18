@@ -11,16 +11,15 @@ import { evolveThresholds, getPerformanceSummary } from "./lessons.js";
 import { executeTool, registerCronRestarter } from "./tools/executor.js";
 import { startPolling, stopPolling, sendMessage, sendHTML, notifyOutOfRange, isEnabled as telegramEnabled, createLiveMessage } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
-import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop, isGhostPosition } from "./state.js";
+import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
-import { checkSmartWalletsOnPool, sweepWalletsFromPools } from "./smart-wallets.js";
+import { checkSmartWalletsOnPool } from "./smart-wallets.js";
 import { getTokenNarrative, getTokenInfo } from "./tools/token.js";
 import { stageSignals } from "./signal-tracker.js";
 import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
 import { appendDecision } from "./decision-log.js";
-import { confirmIndicatorPreset } from "./tools/chart-indicators.js";
 
 process.on("unhandledRejection", (err) => {
   log("unhandled_rejection", `${err?.message || err}`);
@@ -75,7 +74,6 @@ function buildPrompt() {
 let _cronTasks = [];
 let _managementBusy = false; // prevents overlapping management cycles
 let _screeningBusy = false;  // prevents overlapping screening cycles
-const _ghostsAlerted = new Set(); // tracks positions for which we've already sent the ghost alert
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
 let _pollTriggeredAt = 0; // epoch ms — cooldown for poller-triggered management
 const _peakConfirmTimers = new Map();
@@ -102,24 +100,8 @@ function sanitizeUntrustedPromptText(text, maxLen = 500) {
   return cleaned ? JSON.stringify(cleaned) : null;
 }
 
-async function confirmExitIndicator(position, closeReason) {
-  if (!config.indicators.enabled) {
-    return { confirmed: true, skipped: true, reason: "Indicators disabled" };
-  }
-  if (!position?.base_mint) {
-    return { confirmed: true, skipped: true, reason: "Missing base mint for indicator lookup" };
-  }
-  const confirmation = await confirmIndicatorPreset({
-    mint: position.base_mint,
-    side: "exit",
-  });
-  if (!confirmation.confirmed) {
-    log(
-      "indicators",
-      `Exit confirmation rejected for ${position.pair} (${closeReason}): ${confirmation.reason}`,
-    );
-  }
-  return confirmation;
+function shouldUsePnlRecheck() {
+  return !config.api.lpAgentRelayEnabled;
 }
 
 function schedulePeakConfirmation(positionAddress) {
@@ -182,26 +164,6 @@ async function runBriefing() {
  * If the agent restarted after the 1:00 AM UTC cron window,
  * fire the briefing immediately on startup so it's never skipped.
  */
-async function runWalletSweep() {
-  log("cron", "Starting weekly smart wallet sweep");
-  try {
-    const result = await sweepWalletsFromPools({});
-    if (!result.success) {
-      log("cron_warn", `Wallet sweep skipped: ${result.error}`);
-      return;
-    }
-    const msg = result.new_wallets.length > 0
-      ? `🧠 Wallet Sweep: ${result.new_wallets.length} new smart wallet(s) added across ${result.swept_pools} pools (${result.total_tracked} total tracked)`
-      : `🧠 Wallet Sweep: no new wallets promoted across ${result.swept_pools} pools (${result.total_tracked} tracked)`;
-    log("cron", msg);
-    if (telegramEnabled() && result.new_wallets.length > 0) {
-      sendMessage(msg).catch(() => {});
-    }
-  } catch (err) {
-    log("cron_error", `Wallet sweep failed: ${err.message}`);
-  }
-}
-
 async function maybeRunMissedBriefing() {
   const todayUtc = new Date().toISOString().slice(0, 10);
   const lastSent = getLastBriefingDate();
@@ -247,42 +209,24 @@ export async function runManagementCycle({ silent = false } = {}) {
       return mgmtReport;
     }
 
-    // Snapshot + load pool memory — skip ghost positions entirely
-    const ghostsDetected = positions.filter((p) => isGhostPosition(p.position));
-    for (const ghost of ghostsDetected) {
-      log("cron", `Ghost position detected — skipping management: ${ghost.pair || ghost.pool} (${ghost.position})`);
-    }
-    // Fire Telegram alert once per ghost position (in-memory guard prevents repeat alerts)
-    for (const ghost of ghostsDetected) {
-      if (!_ghostsAlerted.has(ghost.position)) {
-        _ghostsAlerted.add(ghost.position);
-        sendMessage(`⚠️ Ghost position detected: <b>${ghost.pair || ghost.pool}</b>\n<code>${ghost.position}</code>\nFailed to close 3+ times. Skipping management — manual cleanup may be needed on Meteora.`).catch(() => {});
-      }
-    }
-
-    const positionData = positions
-      .filter((p) => !isGhostPosition(p.position))
-      .map((p) => {
+    const positionData = positions.map((p) => {
         recordPositionSnapshot(p.pool, p);
         return { ...p, recall: recallForPool(p.pool) };
       });
 
-    if (positionData.length === 0) {
-      log("cron", "All on-chain positions are ghosts — skipping management, triggering screening");
-      mgmtReport = "All active positions are ghosts. Skipping management.";
-      runScreeningCycle().catch((e) => log("cron_error", `Ghost-skip screening failed: ${e.message}`));
-      return mgmtReport;
-    }
-
     // JS trailing TP check
     const exitMap = new Map();
     for (const p of positionData) {
-      if (!p.pnl_pct_suspicious && queuePeakConfirmation(p.position, p.pnl_pct)) {
+      if (
+        !p.pnl_pct_suspicious &&
+        queuePeakConfirmation(p.position, p.pnl_pct, { immediate: !shouldUsePnlRecheck() }) &&
+        shouldUsePnlRecheck()
+      ) {
         schedulePeakConfirmation(p.position);
       }
       const exit = updatePnlAndCheckExits(p.position, p, config.management);
       if (exit) {
-        if (exit.action === "TRAILING_TP" && exit.needs_confirmation) {
+        if (exit.action === "TRAILING_TP" && exit.needs_confirmation && shouldUsePnlRecheck()) {
           if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
             scheduleTrailingDropConfirmation(p.position);
           }
@@ -299,7 +243,6 @@ export async function runManagementCycle({ silent = false } = {}) {
     for (const p of positionData) {
       // Hard exit — highest priority
       if (exitMap.has(p.position)) {
-        // Trailing TP exits bypass indicator — they have their own peak-drop reversal detection
         actionMap.set(p.position, { action: "CLOSE", rule: "exit", reason: exitMap.get(p.position) });
         continue;
       }
@@ -311,19 +254,6 @@ export async function runManagementCycle({ silent = false } = {}) {
 
       const closeRule = getDeterministicCloseRule(p, config.management);
       if (closeRule) {
-        // Only gate OOR-wait (rule 4) and low-yield (rule 5) behind indicator
-        // SL (1), TP (2), pumped far above (3) bypass — indicator structurally opposes these
-        const needsIndicator = closeRule.rule === 4 || closeRule.rule === 5;
-        if (needsIndicator) {
-          const indicatorConfirmation = await confirmExitIndicator(p, closeRule.reason);
-          if (!indicatorConfirmation.confirmed) {
-            actionMap.set(p.position, {
-              action: "STAY",
-              indicatorHold: indicatorConfirmation.reason,
-            });
-            continue;
-          }
-        }
         actionMap.set(p.position, closeRule);
         continue;
       }
@@ -349,7 +279,6 @@ export async function runManagementCycle({ silent = false } = {}) {
       if (p.instruction) line += `\nNote: "${p.instruction}"`;
       if (act.action === "CLOSE" && act.rule === "exit") line += `\n⚡ Trailing TP: ${act.reason}`;
       if (act.action === "CLOSE" && act.rule && act.rule !== "exit") line += `\nRule ${act.rule}: ${act.reason}`;
-      if (act.indicatorHold) line += `\nIndicator hold: ${act.indicatorHold}`;
       if (act.action === "CLAIM") line += `\n→ Claiming fees`;
       return line;
     });
@@ -410,7 +339,7 @@ After executing, write a brief one-line result per position.
 
     // Trigger screening after management (excluding ghost positions from count)
     const afterPositions = await getMyPositions({ force: true }).catch(() => null);
-    const afterCount = (afterPositions?.positions || []).filter((p) => !isGhostPosition(p.position)).length;
+    const afterCount = (afterPositions?.positions || []).length;
     if (afterCount < config.risk.maxPositions && Date.now() - _screeningLastTriggered > screeningCooldownMs) {
       log("cron", `Post-management: ${afterCount}/${config.risk.maxPositions} positions — triggering screening`);
       runScreeningCycle().catch((e) => log("cron_error", `Triggered screening failed: ${e.message}`));
@@ -449,16 +378,15 @@ export async function runScreeningCycle({ silent = false } = {}) {
   let screenReport = null;
   try {
     [prePositions, preBalance] = await Promise.all([getMyPositions({ force: true }), getWalletBalances()]);
-    // Ghost positions don't count toward the limit — they can't be closed and should not block deploys
-    const nonGhostPositionCount = (prePositions.positions || []).filter((p) => !isGhostPosition(p.position)).length;
-    if (nonGhostPositionCount >= config.risk.maxPositions) {
-      log("cron", `Screening skipped — max positions reached (${nonGhostPositionCount}/${config.risk.maxPositions})`);
-      screenReport = `Screening skipped — max positions reached (${nonGhostPositionCount}/${config.risk.maxPositions}).`;
+    const positionCount = (prePositions.positions || []).length;
+    if (positionCount >= config.risk.maxPositions) {
+      log("cron", `Screening skipped — max positions reached (${positionCount}/${config.risk.maxPositions})`);
+      screenReport = `Screening skipped — max positions reached (${positionCount}/${config.risk.maxPositions}).`;
       appendDecision({
         type: "skip",
         actor: "SCREENER",
         summary: "Screening skipped",
-        reason: `Max positions reached (${nonGhostPositionCount}/${config.risk.maxPositions})`,
+        reason: `Max positions reached (${positionCount}/${config.risk.maxPositions})`,
       });
       _screeningBusy = false;
       return screenReport;
@@ -777,11 +705,6 @@ Summarize the current portfolio health, total fees earned, and performance of al
     await maybeRunMissedBriefing();
   }, { timezone: 'UTC' });
 
-  // Weekly smart wallet sweep — every Sunday at 3:00 AM UTC
-  const walletSweepTask = cron.schedule(`0 3 * * 0`, async () => {
-    await runWalletSweep();
-  }, { timezone: 'UTC' });
-
   // Lightweight 30s PnL poller — updates trailing TP state between management cycles, no LLM
   let _pnlPollBusy = false;
   const pnlPollInterval = setInterval(async () => {
@@ -791,30 +714,26 @@ Summarize the current portfolio health, total fees earned, and performance of al
       const result = await getMyPositions({ force: true, silent: true }).catch(() => null);
       if (!result?.positions?.length) return;
       for (const p of result.positions) {
-        // Skip ghost positions — they can't be closed and generate noise
-        if (isGhostPosition(p.position)) continue;
-
-        if (!p.pnl_pct_suspicious && queuePeakConfirmation(p.position, p.pnl_pct)) {
+        if (
+          !p.pnl_pct_suspicious &&
+          queuePeakConfirmation(p.position, p.pnl_pct, { immediate: !shouldUsePnlRecheck() }) &&
+          shouldUsePnlRecheck()
+        ) {
           schedulePeakConfirmation(p.position);
         }
         const exit = updatePnlAndCheckExits(p.position, p, config.management);
         if (exit) {
-          // Trailing TP exits bypass indicator — they have their own peak-drop reversal detection
-          if (exit.action === "TRAILING_TP" && exit.needs_confirmation) {
+          if (exit.action === "TRAILING_TP" && exit.needs_confirmation && shouldUsePnlRecheck()) {
             if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
               scheduleTrailingDropConfirmation(p.position);
             }
             continue;
           }
-          // Stop loss bypasses the cooldown — act immediately regardless of when the last cycle ran.
-          // The 30-min cooldown was the root cause of stop loss slippage: token dumps fast, poller
-          // detects it every 30s but is blocked if a cycle ran recently for a different reason.
-          const isStopLoss = exit.action === "STOP_LOSS";
           const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
           const sinceLastTrigger = Date.now() - _pollTriggeredAt;
-          if (isStopLoss || sinceLastTrigger >= cooldownMs) {
+          if (sinceLastTrigger >= cooldownMs) {
             _pollTriggeredAt = Date.now();
-            log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason}${isStopLoss ? " ⚡ STOP LOSS — bypassing cooldown" : ""} — triggering management`);
+            log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason} — triggering management`);
             runManagementCycle({ silent: false }).catch((e) => log("cron_error", `Poll-triggered management failed: ${e.message}`));
           } else {
             log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason} — cooldown (${Math.round((cooldownMs - sinceLastTrigger) / 1000)}s left)`);
@@ -823,15 +742,6 @@ Summarize the current portfolio health, total fees earned, and performance of al
         }
         const closeRule = getDeterministicCloseRule(p, config.management);
         if (closeRule) {
-          // Only gate OOR-wait (rule 4) and low-yield (rule 5) behind indicator
-          const needsIndicator = closeRule.rule === 4 || closeRule.rule === 5;
-          if (needsIndicator) {
-            const indicatorConfirmation = await confirmExitIndicator(p, closeRule.reason);
-            if (!indicatorConfirmation.confirmed) {
-              log("state", `[PnL poll] Deterministic close suppressed by indicators: ${p.pair} — ${indicatorConfirmation.reason}`);
-              continue;
-            }
-          }
           const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
           const sinceLastTrigger = Date.now() - _pollTriggeredAt;
           if (sinceLastTrigger >= cooldownMs) {
@@ -849,7 +759,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
     }
   }, 30_000);
 
-  _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog, walletSweepTask];
+  _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog];
   // Store interval ref so stopCronJobs can clear it
   _cronTasks._pnlPollInterval = pnlPollInterval;
   log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m`);
@@ -1645,30 +1555,6 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
           "GENERAL"
         );
         console.log(`\n${reply}\n`);
-      });
-      return;
-    }
-
-    if (input === "/refresh-wallets") {
-      await runBusy(async () => {
-        console.log("\nSweeping top LPers across deployed pools...\n");
-        const result = await sweepWalletsFromPools({});
-        if (!result.success) {
-          console.log(`Sweep skipped: ${result.error}\n`);
-          return;
-        }
-        console.log(`Swept ${result.swept_pools} pool(s):`);
-        for (const d of result.details) {
-          const label = d.error ? `ERROR: ${d.error}` : `${d.lpers_checked} LPers, ${d.new_wallets} promoted`;
-          console.log(`  ${d.pool.slice(0, 8)}...  ${label}`);
-        }
-        if (result.new_wallets.length > 0) {
-          console.log(`\n✅ Added ${result.new_wallets.length} new smart wallet(s):`);
-          for (const addr of result.new_wallets) console.log(`  ${addr}`);
-        } else {
-          console.log("\nNo new wallets met the criteria this run.");
-        }
-        console.log(`\nTotal tracked: ${result.total_tracked}/${20}\n`);
       });
       return;
     }

@@ -95,7 +95,82 @@ function shouldUseLpAgentRelayForDeploy() {
 }
 
 async function meridianJson(pathname, options = {}) {
-  const res = await fetch(`${getMeridianApiBase()}${pathname}`, options);
+  const { retry, ...fetchOptions } = options;
+  if (!retry) {
+    return meridianJsonOnce(pathname, fetchOptions);
+  }
+
+  const maxElapsedMs = Number(retry.maxElapsedMs || 30_000);
+  const maxAttempts = Number(retry.maxAttempts || 10);
+  const startedAt = Date.now();
+  let attempt = 0;
+  let lastError = null;
+
+  while (Date.now() - startedAt < maxElapsedMs && attempt < maxAttempts) {
+    const elapsedMs = Date.now() - startedAt;
+    const remainingMs = Math.max(1, maxElapsedMs - elapsedMs);
+    try {
+      return await meridianJsonOnce(
+        pathname,
+        fetchOptions,
+        Math.min(Number(retry.perAttemptTimeoutMs || 10_000), remainingMs),
+      );
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.status || 0);
+      if (!isRetryableMeridianStatus(status) || attempt >= maxAttempts - 1) {
+        throw error;
+      }
+      const waitMs = Math.min(meridianRetryDelayMs(error, attempt), Math.max(0, remainingMs - 1));
+      if (waitMs <= 0) break;
+      await sleep(waitMs);
+      attempt += 1;
+    }
+  }
+
+  throw lastError || new Error(`${pathname} retry budget exhausted`);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableMeridianStatus(status) {
+  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+}
+
+function meridianRetryDelayMs(error, attempt) {
+  const retryAfter = Number(error?.retryAfter);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(retryAfter * 1000, 10_000);
+  }
+  return Math.min(500 * 2 ** attempt, 5_000);
+}
+
+async function meridianFetchWithTimeout(url, options, timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return fetch(url, options);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = options.signal;
+  const abortFromParent = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", abortFromParent, { once: true });
+  }
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", abortFromParent);
+  }
+}
+
+async function meridianJsonOnce(pathname, options = {}, timeoutMs = null) {
+  const res = await meridianFetchWithTimeout(`${getMeridianApiBase()}${pathname}`, options, timeoutMs);
   const text = await res.text().catch(() => "");
   let payload = {};
   try {
@@ -104,7 +179,11 @@ async function meridianJson(pathname, options = {}) {
     payload = { raw: text };
   }
   if (!res.ok) {
-    throw new Error(payload?.error || `${pathname} ${res.status}`);
+    const error = new Error(payload?.error || `${pathname} ${res.status}`);
+    error.status = res.status;
+    error.payload = payload;
+    error.retryAfter = res.headers.get("retry-after");
+    throw error;
   }
   return payload;
 }
@@ -754,6 +833,26 @@ function safeNum(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizeRelayPosition(position) {
+  if (!position || typeof position !== "object") return position;
+  if (!config.management.solMode) return position;
+
+  const totalValueNative = position.total_value_native ?? position.total_value_usd;
+  const unclaimedFeesNative = position.unclaimed_fees_native ?? position.unclaimed_fees_usd;
+  const collectedFeesNative = position.collected_fees_native ?? position.collected_fees_usd;
+  const pnlNative = position.pnl_native ?? position.pnl_usd;
+  const derivedPnlPct = position.pnl_pct_derived_native ?? position.pnl_pct_derived;
+
+  return {
+    ...position,
+    total_value_usd: totalValueNative,
+    unclaimed_fees_usd: unclaimedFeesNative,
+    collected_fees_usd: collectedFeesNative,
+    pnl_usd: pnlNative,
+    pnl_pct_derived: derivedPnlPct,
+  };
+}
+
 function deriveOpenPnlPct(binData, solMode = false) {
   if (!binData) return null;
 
@@ -795,9 +894,19 @@ async function fetchOpenPositionsFromMeridian({ walletAddress, agentId }) {
     owner: walletAddress,
     agentId: agentId || "agent-local",
   });
-  return meridianJson(`/positions/open?${search.toString()}`, {
+  const payload = await meridianJson(`/positions/open?${search.toString()}`, {
     headers: config.api.publicApiKey ? { "x-api-key": config.api.publicApiKey } : {},
+    retry: {
+      maxElapsedMs: 30_000,
+      perAttemptTimeoutMs: 10_000,
+    },
   });
+  return {
+    ...payload,
+    positions: Array.isArray(payload?.positions)
+      ? payload.positions.map((position) => normalizeRelayPosition(position))
+      : [],
+  };
 }
 
 // ─── Get My Positions ──────────────────────────────────────────
@@ -822,11 +931,12 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
           walletAddress,
           agentId: config.hiveMind.agentId || "agent-local",
         });
-        syncOpenPositions((result.positions || []).map((p) => p.position));
+        const normalizedPositions = Array.isArray(result.positions) ? result.positions : [];
+        syncOpenPositions(normalizedPositions.map((p) => p.position));
         _positionsCache = {
           wallet: walletAddress,
           total_positions: Number(result.total_positions || 0),
-          positions: Array.isArray(result.positions) ? result.positions : [],
+          positions: normalizedPositions,
           request_id: result.requestId || null,
         };
         _positionsCacheAt = Date.now();
