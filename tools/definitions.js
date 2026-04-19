@@ -133,8 +133,8 @@ PRIORITY ORDER for strategy and bins:
 HARD RULES:
 - Never use 'curve'.
 - Bin Step: Only deploy in pools with bin_step between 80 and 125.
-- For single-side SOL deploys (amount_y only, amount_x=0), do not request upside exposure:
-  use bins_below only, keep bins_above=0, and the upper bin will be pinned to the current active bin.
+- For single-side SOL deploys (amount_y only, amount_x=0), omit bins_above to use the
+  automatic upside buffer from config. Do not use upside_pct.
 
 Guidelines (only when user hasn't specified):
 - Strategy: use the active strategy's lp_strategy field (bid_ask or spot)
@@ -168,11 +168,11 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
           },
           bins_below: {
             type: "number",
-            description: "Number of bins below the current active bin. For single-side SOL deploys, this is the main range input: lower bin = active bin - bins_below, upper bin = active bin."
+            description: "Number of bins below the current active bin. For single-side SOL deploys, this is the main range input."
           },
           bins_above: {
             type: "number",
-            description: "Number of bins above the current active bin. Keep this at 0 for single-side SOL deploys. Only use this for dual-sided or explicit upside-exposure deploys."
+            description: "Number of bins above the current active bin. For single-side SOL deploys, omit to use the configured upside buffer (default 5 bins). Only set explicitly for custom overrides."
           },
           downside_pct: {
             type: "number",

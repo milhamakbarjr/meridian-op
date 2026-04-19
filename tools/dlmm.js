@@ -386,26 +386,25 @@ export async function deployPosition({
   const finalAmountY = amount_y ?? amount_sol ?? fallbackAmountY;
   const finalAmountX = amount_x ?? 0;
   const isSingleSidedSol = finalAmountX <= 0 && finalAmountY > 0;
-  if (isSingleSidedSol && (Number(bins_above ?? 0) > 0 || Number(upside_pct ?? 0) > 0)) {
+  if (isSingleSidedSol && Number(upside_pct ?? 0) > 0) {
     throw new Error(
-      "Single-side SOL deploy cannot use bins_above or upside_pct. Use amount_y with bins_below only; the upper bin is the SDK active bin.",
+      "Single-side SOL deploy cannot use upside_pct. Use amount_y with bins_below only.",
     );
   }
   if (isSingleSidedSol) {
-    activeBinsAbove = 0;
+    // If the LLM explicitly passes bins_above, respect it. Otherwise apply the configured
+    // upside buffer so the position has a grace zone against upward price ticks at deploy time.
+    activeBinsAbove = Number(bins_above ?? 0) > 0
+      ? Number(bins_above)
+      : (config.strategy.binsAboveBuffer ?? 5);
   }
   const totalBins = activeBinsBelow + activeBinsAbove;
   const isWideRange = totalBins > 69;
   const minBinId = activeBin.binId - activeBinsBelow;
-  const maxBinId = isSingleSidedSol ? activeBin.binId : activeBin.binId + activeBinsAbove;
+  const maxBinId = activeBin.binId + activeBinsAbove;
 
   if (minBinId > maxBinId) {
     throw new Error(`Invalid bin range: ${minBinId} -> ${maxBinId}`);
-  }
-  if (isSingleSidedSol && maxBinId !== activeBin.binId) {
-    throw new Error(
-      `Single-side SOL deploy must end at the SDK active bin. Expected ${activeBin.binId}, got ${maxBinId}.`,
-    );
   }
 
   const minPrice = Number(getPriceOfBinByBinId(minBinId, actualBinStep).toString());
@@ -970,9 +969,6 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const tracked = getTrackedPosition(positionAddress);
         const isOOR = pool.outOfRange || pool.positionsOutOfRange?.includes(positionAddress);
 
-        if (isOOR) markOutOfRange(positionAddress);
-        else markInRange(positionAddress);
-
         // Bin data: from supplemental PnL call (OOR) or tracked state (in-range)
         const binData = binDataByPool[pool.poolAddress]?.[positionAddress];
         if (!binData) {
@@ -981,6 +977,20 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const lowerBin  = binData?.lowerBinId      ?? tracked?.bin_range?.min ?? null;
         const upperBin  = binData?.upperBinId      ?? tracked?.bin_range?.max ?? null;
         const activeBin = binData?.poolActiveBinId ?? tracked?.bin_range?.active ?? null;
+
+        // Effective OOR: for single-sided SOL positions deployed with an upside buffer,
+        // the buffer bins are empty — the position earns zero fees if price moves into them.
+        // Treat price above the deploy-time active bin as OOR so the timer fires correctly.
+        const effectivelyOOR = !isOOR
+          && tracked?.active_bin_at_deploy != null
+          && (tracked?.amount_x == null || tracked?.amount_x === 0)
+          && tracked?.bin_range?.bins_above > 0
+          && activeBin != null
+          && activeBin > tracked.active_bin_at_deploy;
+        const isEffectiveOOR = isOOR || effectivelyOOR;
+
+        if (isEffectiveOOR) markOutOfRange(positionAddress);
+        else markInRange(positionAddress);
         const lpData = lpAgentByPosition[positionAddress] || null;
 
         const ageFromState = tracked?.deployed_at
@@ -1012,7 +1022,7 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
           lower_bin:          lowerBin,
           upper_bin:          upperBin,
           active_bin:         activeBin,
-          in_range:           binData ? !binData.isOutOfRange : !isOOR,
+          in_range:           binData ? (!binData.isOutOfRange && !effectivelyOOR) : !isEffectiveOOR,
           unclaimed_fees_usd: lpData
             ? Math.round((
                 config.management.solMode
