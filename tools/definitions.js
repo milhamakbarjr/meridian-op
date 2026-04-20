@@ -349,21 +349,27 @@ Use when you need to rebalance wallet holdings, e.g.:
 - Convert claimed fee tokens back to SOL/USDC
 - Prepare token pair before deploying a position
 
+IMPORTANT: SOL as input_mint is blocked by default. Management should only sell tokens → SOL, not buy tokens with SOL. If you need to swap SOL → token for a legitimate reason, set allow_sol_input: true.
+
 WARNING: This executes a real on-chain transaction.`,
       parameters: {
         type: "object",
         properties: {
           input_mint: {
             type: "string",
-            description: "Mint address of the token to sell"
+            description: "Mint address of the token to sell. Use 'SOL' or the SOL mint for SOL. NOTE: SOL as input is blocked unless allow_sol_input is true."
           },
           output_mint: {
             type: "string",
-            description: "Mint address of the token to buy"
+            description: "Mint address of the token to buy. Use 'SOL' or the SOL mint for SOL."
           },
           amount: {
             type: "number",
             description: "Amount of input token to swap (in human-readable units, not lamports)"
+          },
+          allow_sol_input: {
+            type: "boolean",
+            description: "Set to true only when deliberately swapping SOL → another token (e.g., rebalancing for a deploy). Default false."
           },
         },
         required: ["input_mint", "output_mint", "amount"]

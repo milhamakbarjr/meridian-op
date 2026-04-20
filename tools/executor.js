@@ -309,6 +309,19 @@ export async function executeTool(name, args) {
     }
   }
 
+  // ─── swap_token direction guard ───────────
+  // Management agent should only sell tokens → SOL, never buy tokens with SOL.
+  // Block any swap where SOL is the input unless explicitly overridden.
+  const SOL_MINT = "So11111111111111111111111111111111111111112";
+  if (name === "swap_token" && !args.allow_sol_input) {
+    const inputMint = args.input_mint?.trim();
+    if (inputMint === "SOL" || inputMint === SOL_MINT) {
+      const msg = "Safety: swap_token blocked — SOL cannot be used as input. Management should only swap tokens → SOL. Use allow_sol_input: true to override deliberately.";
+      log("safety_block", msg);
+      return { blocked: true, reason: msg };
+    }
+  }
+
   // ─── Execute ──────────────────────────────
   try {
     const result = await fn(args);
@@ -347,10 +360,16 @@ export async function executeTool(name, args) {
               result.auto_swapped = true;
               result.auto_swap_note = `Base token already auto-swapped back to SOL (${token.symbol || result.base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
               if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
+            } else {
+              // No base tokens in wallet (position was SOL-side only, or dust below $0.10)
+              result.auto_swap_note = "No base token balance found after close — position was likely SOL-side only. Do NOT call swap_token.";
             }
           } catch (e) {
             log("executor_warn", `Auto-swap after close failed: ${e.message}`);
+            result.auto_swap_note = "Auto-swap failed — do NOT call swap_token manually.";
           }
+        } else if (args.skip_swap) {
+          result.auto_swap_note = "skip_swap was set — base token was NOT swapped. Do NOT call swap_token unless explicitly requested by user.";
         }
       } else if (name === "claim_fees" && config.management.autoSwapAfterClaim && result.base_mint) {
         try {
