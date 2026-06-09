@@ -37,7 +37,18 @@ logs/
 
 # Dev context
 context.md
+CONTEXT.md
+dev-blocklist.json
 docs/
 
 # Test files
 test-*.js
+
+# Discord listener queue
+discord-signals.json
+
+# Playwright MCP browser logs
+.playwright-mcp/
+
+# Claude Code runtime lock
+.claude/scheduled_tasks.lock

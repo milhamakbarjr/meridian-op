@@ -7,15 +7,17 @@
 
 import fs from "fs";
 import { log } from "./logger.js";
+import { repoPath } from "./repo-root.js";
 
-const BLACKLIST_FILE = "./token-blacklist.json";
+const BLACKLIST_FILE = repoPath("token-blacklist.json");
 
 function load() {
   if (!fs.existsSync(BLACKLIST_FILE)) return {};
   try {
     return JSON.parse(fs.readFileSync(BLACKLIST_FILE, "utf8"));
-  } catch {
-    return {};
+  } catch (error) {
+    log("blacklist_error", `Invalid ${BLACKLIST_FILE}: ${error.message}`);
+    throw new Error(`Safety blacklist is unreadable: ${BLACKLIST_FILE}`);
   }
 }
 

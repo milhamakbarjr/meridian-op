@@ -1,10 +1,11 @@
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { REPO_ROOT, repoPath } from "./repo-root.js";
+import { getScreeningDefaultsForTimeframe, normalizeTimeframe, scaleScreeningToTimeframe, TIMEFRAME_SCREENING_SCALES } from "./screening-scales.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USER_CONFIG_PATH = path.join(__dirname, "user-config.json");
-const GMGN_CONFIG_PATH = path.join(__dirname, "gmgn-config.json");
+export { REPO_ROOT, repoPath, getScreeningDefaultsForTimeframe, normalizeTimeframe, scaleScreeningToTimeframe, TIMEFRAME_SCREENING_SCALES };
+
+const USER_CONFIG_PATH = repoPath("user-config.json");
+const GMGN_CONFIG_PATH = repoPath("gmgn-config.json");
 const DEFAULT_HIVEMIND_URL = "https://api.agentmeridian.xyz";
 const DEFAULT_AGENT_MERIDIAN_API_URL = "https://api.agentmeridian.xyz/api";
 const DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY = "bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz";
@@ -19,6 +20,25 @@ function readJsonIfExists(filePath) {
 const u = readJsonIfExists(USER_CONFIG_PATH);
 const gmgnUserConfig = readJsonIfExists(GMGN_CONFIG_PATH);
 
+export const MIN_SAFE_BINS_BELOW = 35;
+
+function numericConfig(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+const legacyBinsBelow = numericConfig(u.binsBelow);
+const configuredMinBinsBelow = numericConfig(u.minBinsBelow) ?? MIN_SAFE_BINS_BELOW;
+const configuredMaxBinsBelow = numericConfig(u.maxBinsBelow)
+  ?? (legacyBinsBelow != null ? Math.max(legacyBinsBelow, configuredMinBinsBelow) : 69);
+const configuredDefaultBinsBelow = numericConfig(u.defaultBinsBelow) ?? legacyBinsBelow ?? configuredMaxBinsBelow;
+const strategyMinBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Math.round(configuredMinBinsBelow));
+const strategyMaxBinsBelow = Math.max(strategyMinBinsBelow, Math.round(configuredMaxBinsBelow));
+const strategyDefaultBinsBelow = Math.max(
+  strategyMinBinsBelow,
+  Math.min(strategyMaxBinsBelow, Math.round(configuredDefaultBinsBelow)),
+);
+
 // Apply wallet/RPC from user-config if not already in env
 if (u.rpcUrl)    process.env.RPC_URL            ||= u.rpcUrl;
 if (u.walletKey) process.env.WALLET_PRIVATE_KEY ||= u.walletKey;
@@ -31,6 +51,7 @@ if (u.agentMeridianApiUrl) process.env.AGENT_MERIDIAN_API_URL ||= u.agentMeridia
 if (gmgnUserConfig.apiKey || u.gmgnApiKey) {
   process.env.GMGN_API_KEY ||= gmgnUserConfig.apiKey || u.gmgnApiKey;
 }
+if (u.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= String(u.telegramChatId);
 
 const indicatorUserConfig = u.chartIndicators ?? {};
 
@@ -182,10 +203,11 @@ export const config = {
 
   // ─── Strategy Mapping ───────────────────
   strategy: {
-    strategy:        u.strategy        ?? "bid_ask",
-    minBinsBelow:    u.minBinsBelow    ?? 35,
-    maxBinsBelow:    u.maxBinsBelow    ?? 69,
-    binsAboveBuffer: u.binsAboveBuffer ?? 5,
+    strategy:         u.strategy ?? "bid_ask",
+    minBinsBelow:     strategyMinBinsBelow,
+    maxBinsBelow:     strategyMaxBinsBelow,
+    defaultBinsBelow: strategyDefaultBinsBelow,
+    binsAboveBuffer:  u.binsAboveBuffer ?? 5,
   },
 
   // ─── Scheduling ─────────────────────────
@@ -297,6 +319,8 @@ export function reloadScreeningThresholds() {
     const s = config.screening;
     if (fresh.screeningSource != null) s.source = fresh.screeningSource;
     if (fresh.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = fresh.minFeeActiveTvlRatio;
+    if (fresh.minTokenFeesSol  != null) s.minTokenFeesSol  = fresh.minTokenFeesSol;
+    if (fresh.maxTop10Pct      != null) s.maxTop10Pct      = fresh.maxTop10Pct;
     if (fresh.useDiscordSignals !== undefined) s.useDiscordSignals = fresh.useDiscordSignals;
     if (fresh.discordSignalMode != null) s.discordSignalMode = fresh.discordSignalMode;
     if (fresh.excludeHighSupplyConcentration !== undefined) s.excludeHighSupplyConcentration = fresh.excludeHighSupplyConcentration;
@@ -322,6 +346,15 @@ export function reloadScreeningThresholds() {
     if (fresh.allowedLaunchpads !== undefined) s.allowedLaunchpads = fresh.allowedLaunchpads;
     if (fresh.blockedLaunchpads !== undefined) s.blockedLaunchpads = fresh.blockedLaunchpads;
     if (fresh.maxVolatility     != null) s.maxVolatility    = fresh.maxVolatility;
+    const minBinsBelow = numericConfig(fresh.minBinsBelow) ?? config.strategy.minBinsBelow;
+    const maxBinsBelow = numericConfig(fresh.maxBinsBelow) ?? numericConfig(fresh.binsBelow) ?? config.strategy.maxBinsBelow;
+    const defaultBinsBelow = numericConfig(fresh.defaultBinsBelow) ?? numericConfig(fresh.binsBelow) ?? config.strategy.defaultBinsBelow ?? maxBinsBelow;
+    config.strategy.minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Math.round(minBinsBelow));
+    config.strategy.maxBinsBelow = Math.max(config.strategy.minBinsBelow, Math.round(maxBinsBelow));
+    config.strategy.defaultBinsBelow = Math.max(
+      config.strategy.minBinsBelow,
+      Math.min(config.strategy.maxBinsBelow, Math.round(defaultBinsBelow)),
+    );
   } catch { /* ignore */ }
   try {
     const freshGmgn = readJsonIfExists(GMGN_CONFIG_PATH);

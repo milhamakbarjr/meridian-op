@@ -1,4 +1,4 @@
-export const tools = [
+const toolDefinitions = [
   // ═══════════════════════════════════════════
   //  SCREENING TOOLS
   // ═══════════════════════════════════════════
@@ -18,7 +18,7 @@ Pools are pre-filtered for safety:
 - Both tokens organic score >= 60
 
 Returns condensed pool data: address, name, tokens, bin_step, fee_pct,
-active_tvl, fee_window, volume_window, fee_tvl_ratio, volatility, organic_score,
+active_tvl, fee_window, volume_window, fee_tvl_ratio, volatility from max(timeframe, 30m), organic_score,
 holders, mcap, active_positions, price_change_pct, warning count.
 
 Use this as the primary tool for finding new LP opportunities.`,
@@ -48,13 +48,14 @@ Use this as the primary tool for finding new LP opportunities.`,
     type: "function",
     function: {
       name: "get_top_candidates",
-      description: `Get the top pre-scored pool candidates ready for deployment.
+      description: `Get the top pre-scored pool candidates for deployment review.
 All filtering, scoring, and rule-checking is done in code — no analysis needed.
 Returns the top N eligible pools ranked by score (fee/TVL, organic, stability, volume).
 Each pool includes a score (0-100) and has already passed all hard disqualifiers.
 Use this instead of discover_pools for screening cycles. The active screening source is controlled by screeningSource:
 - meteora: legacy Meteora pool-discovery flow
-- gmgn: GMGN trending/security/holders/price-action first, then Meteora DLMM pool match.`,
+- gmgn: GMGN trending/security/holders/price-action first, then Meteora DLMM pool match.
+If this returns one candidate, still judge whether it is actually worth deploying; one weak candidate should be skipped.`,
       parameters: {
         type: "object",
         properties: {
@@ -86,7 +87,7 @@ IMPORTANT: Only call this with a real pool address from get_my_positions or get_
           },
           timeframe: {
             type: "string",
-            enum: ["5m", "15m", "30m", "1h", "2h", "4h", "12h", "24h"],
+            enum: ["5m", "30m", "1h", "2h", "4h", "12h", "24h"],
             description: "Data timeframe. Default 5m for management (most accurate). Use 4h+ for screening."
           }
         },
@@ -130,18 +131,20 @@ Only call this if you need the current price to calculate a specific bin range (
 
 PRIORITY ORDER for strategy and bins:
 1. User explicitly specifies → always follow exactly (user override is absolute)
-2. No user spec → use active strategy's lp_strategy and choose bins based on volatility
+2. No user spec → use the configured strategy from config.strategy.strategy and choose bins based on volatility
 
 HARD RULES:
 - Never use 'curve'.
 - Bin Step: Only deploy in pools with bin_step between 80 and 125.
+- Volatility must be positive. If volatility is 0, null, or missing, do not deploy.
+- Range must cover at least 35 total bins. Never deploy 1-bin/tiny ranges.
 - For single-side SOL deploys (amount_y only, amount_x=0), omit bins_above to use the
-  automatic upside buffer from config. Do not use upside_pct.
+  automatic upside buffer from config (bins_above=0 if not configured). Do not use upside_pct.
 
 Guidelines (only when user hasn't specified):
-- Strategy: use the active strategy's lp_strategy field (bid_ask or spot)
-- Bins: choose 35–69 for standard volatility; up to 350 for wide-range strategies. Max 1400 total.
-- Deposit: Can be single-sided (SOL only or Base only) or dual-sided.
+- Strategy: omit the strategy field — the system will use the configured default from config.strategy.strategy
+- Bins: choose from configured minBinsBelow/maxBinsBelow by positive volatility. The hard lower floor is 35 bins.
+- Deposit: single-sided SOL only: set amount_y/amount_sol, keep amount_x=0.
 
 WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
       parameters: {
@@ -157,7 +160,7 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
           },
           amount_x: {
             type: "number",
-            description: "Amount of base token to deposit (if doing dual-sided)."
+            description: "Unsupported for this agent. Keep at 0; deploys are single-side SOL via amount_y."
           },
           amount_sol: {
             type: "number",
@@ -166,15 +169,15 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
           strategy: {
             type: "string",
             enum: ["bid_ask", "spot"],
-            description: "DLMM strategy type. If user specifies, use exactly what they said. Otherwise use the active strategy's lp_strategy field."
+            description: "DLMM strategy type. If user specifies, use exactly what they said. Otherwise omit — the system default from config.strategy.strategy will be used automatically."
           },
           bins_below: {
             type: "number",
-            description: "Number of bins below the current active bin. For single-side SOL deploys, this is the main range input."
+            description: "Number of bins below the current active bin. For single-side SOL deploys, this is the main range input: lower bin = active bin - bins_below, upper bin = active bin."
           },
           bins_above: {
             type: "number",
-            description: "Number of bins above the current active bin. For single-side SOL deploys, omit to use the configured upside buffer (default 5 bins). Only set explicitly for custom overrides."
+            description: "Number of bins above the current active bin. For single-side SOL deploys, omit to use the configured upside buffer. Only set explicitly for custom overrides."
           },
           downside_pct: {
             type: "number",
@@ -188,7 +191,7 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
           base_mint: { type: "string", description: "Base token mint address — used to prevent duplicate token exposure across pools" },
           bin_step: { type: "number", description: "Pool bin step (from discover_pools)" },
           base_fee: { type: "number", description: "Pool base fee percentage (from discover_pools)" },
-          volatility: { type: "number", description: "Pool volatility at deploy time" },
+          volatility: { type: "number", description: "Pool volatility at deploy time, sourced from max(screening timeframe, 30m)" },
           fee_tvl_ratio: { type: "number", description: "fee/TVL ratio at deploy time" },
           organic_score: { type: "number", description: "Base token organic score at deploy time" },
           initial_value_usd: { type: "number", description: "Estimated USD value being deployed" }
@@ -396,7 +399,7 @@ Management: minClaimAmount, outOfRangeBinsToClose, outOfRangeWaitMinutes, oorCoo
 Risk: maxPositions, maxDeployAmount
 Schedule: managementIntervalMin, screeningIntervalMin
 Models: managementModel, screeningModel, generalModel
-Strategy: strategy, minBinsBelow, maxBinsBelow
+Strategy: strategy, minBinsBelow, maxBinsBelow, defaultBinsBelow (legacy binsBelow maps to maxBinsBelow)
 
 Reason is optional but helpful — logged as a lesson when provided.`,
       parameters: {
@@ -1138,3 +1141,13 @@ Blacklisted tokens are filtered BEFORE the LLM even sees pool candidates.`,
     }
   },
 ];
+
+export const tools = toolDefinitions.map((tool) => ({
+  ...tool,
+  function: {
+    ...tool.function,
+    parameters: tool.function.parameters?.type === "object"
+      ? { additionalProperties: false, ...tool.function.parameters }
+      : tool.function.parameters,
+  },
+}));

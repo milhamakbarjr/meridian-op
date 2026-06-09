@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
+import { repoPath } from "./repo-root.js";
 
-const LOG_DIR = "./logs";
+const LOG_DIR = repoPath("logs");
 const LOG_LEVEL = process.env.LOG_LEVEL || "info";
 
 const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
@@ -72,20 +73,4 @@ export function logAction(action) {
   const dateStr = timestamp.split("T")[0];
   const actionsFile = path.join(LOG_DIR, `actions-${dateStr}.jsonl`);
   fs.appendFileSync(actionsFile, JSON.stringify(entry) + "\n");
-}
-
-/**
- * Log a portfolio snapshot (for tracking performance over time).
- */
-export function logSnapshot(snapshot) {
-  const timestamp = new Date().toISOString();
-
-  const entry = {
-    timestamp,
-    ...snapshot,
-  };
-
-  const dateStr = timestamp.split("T")[0];
-  const snapshotFile = path.join(LOG_DIR, `snapshots-${dateStr}.jsonl`);
-  fs.appendFileSync(snapshotFile, JSON.stringify(entry) + "\n");
 }

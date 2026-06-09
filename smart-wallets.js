@@ -1,12 +1,9 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { log } from "./logger.js";
 import { config } from "./config.js";
+import { repoPath } from "./repo-root.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const WALLETS_PATH = path.join(__dirname, "smart-wallets.json");
-const POOL_MEMORY_PATH = path.join(__dirname, "pool-memory.json");
+const WALLETS_PATH = repoPath("smart-wallets.json");
+const POOL_MEMORY_PATH = repoPath("pool-memory.json");
 
 // Small delay between pool calls to avoid hammering the relay
 const SWEEP_SLEEP_MS = 2_000;

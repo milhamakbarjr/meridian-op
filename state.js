@@ -10,8 +10,9 @@
 
 import fs from "fs";
 import { log } from "./logger.js";
+import { repoPath } from "./repo-root.js";
 
-const STATE_FILE = "./state.json";
+const STATE_FILE = repoPath("state.json");
 
 const MAX_RECENT_EVENTS = 20;
 const MAX_INSTRUCTION_LENGTH = 280;
@@ -68,6 +69,10 @@ export function trackPosition({
   organic_score,
   initial_value_usd,
   signal_snapshot = null,
+  entry_mcap = null,
+  entry_tvl = null,
+  entry_volume = null,
+  entry_holders = null,
 }) {
   const state = load();
   state.positions[position] = {
@@ -85,6 +90,10 @@ export function trackPosition({
     initial_fee_tvl_24h: fee_tvl_ratio,
     organic_score,
     initial_value_usd,
+    entry_mcap,
+    entry_tvl,
+    entry_volume,
+    entry_holders,
     signal_snapshot: signal_snapshot || null,
     deployed_at: new Date().toISOString(),
     out_of_range_since: null,
@@ -187,25 +196,6 @@ export function recordClose(position_address, reason) {
   pushEvent(state, { action: "close", position: position_address, pool_name: pos.pool_name || pos.pool, reason });
   save(state);
   log("state", `Position ${position_address} marked closed: ${reason}`);
-}
-
-/**
- * Record a rebalance (close + redeploy).
- */
-export function recordRebalance(old_position, new_position) {
-  const state = load();
-  const old = state.positions[old_position];
-  if (old) {
-    old.closed = true;
-    old.closed_at = new Date().toISOString();
-    old.notes.push(`Rebalanced into ${new_position} at ${old.closed_at}`);
-  }
-  const newPos = state.positions[new_position];
-  if (newPos) {
-    newPos.rebalance_count = (old?.rebalance_count || 0) + 1;
-    newPos.notes.push(`Rebalanced from ${old_position}`);
-  }
-  save(state);
 }
 
 /**
