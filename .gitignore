@@ -11,6 +11,13 @@ node_modules/
 user-config.json
 gmgn-config.json
 
+# DRY_RUN sim data
+dryrun-positions.json
+dryrun-snapshots.jsonl
+dryrun-closed.jsonl
+dryrun-report-*.md
+dryrun/cache/
+
 # Runtime state (position tracking, lessons — user-specific)
 state.json
 lessons.json
