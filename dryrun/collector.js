@@ -253,10 +253,13 @@ export async function runDryRunCollector() {
 
       appendLine(SNAPSHOTS_FILE, snap);
 
-      // Update position record
+      // Update position record. getActiveBin may return price as a string (BN
+      // wrapper) — coerce to Number so the isFinite check and downstream math
+      // don't silently skip the append.
       const updatedPriceHistory = Array.isArray(pos.price_history) ? [...pos.price_history] : [];
-      if (currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0) {
-        updatedPriceHistory.push({ t: now.toISOString(), p: currentPrice });
+      const numericPrice = Number(currentPrice);
+      if (Number.isFinite(numericPrice) && numericPrice > 0) {
+        updatedPriceHistory.push({ t: now.toISOString(), p: numericPrice });
         // Cap at 1000 samples to keep position file size sane (~10 days at 10m interval)
         if (updatedPriceHistory.length > 1000) updatedPriceHistory.shift();
       }

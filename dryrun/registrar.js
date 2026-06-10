@@ -41,7 +41,11 @@ export async function registerDryRunDeploy(args, result) {
     const pool = poolData.status === "fulfilled" ? poolData.value : null;
 
     const activeBinAtDeploy = bin?.binId ?? null;
-    const priceAtDeploy = bin?.price ?? null;
+    // getActiveBin returns price as a string (BN wrapper). Coerce to Number so
+    // downstream Number.isFinite checks pass and price_history stays uniform.
+    const rawPrice = bin?.price ?? null;
+    const numericPrice = rawPrice != null ? Number(rawPrice) : null;
+    const priceAtDeploy = Number.isFinite(numericPrice) ? numericPrice : null;
     const amountSol = args.amount_y ?? args.amount_sol ?? result.would_deploy?.amount_y ?? 0.5;
     const binsBelow = args.bins_below ?? result.would_deploy?.bins_below ?? 35;
     const binsAbove = args.bins_above ?? result.would_deploy?.bins_above ?? 0;
