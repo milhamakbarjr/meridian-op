@@ -2,6 +2,7 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { getActiveBin } from "../tools/dlmm.js";
 import { getPoolDetail } from "../tools/screening.js";
+import { config } from "../config.js";
 import { log } from "../logger.js";
 
 const POSITIONS_FILE = "./dryrun-positions.json";
@@ -27,9 +28,13 @@ export async function registerDryRunDeploy(args, result) {
     const poolAddress = args.pool_address;
     if (!poolAddress) return;
 
+    // Use the screening timeframe (default 30m) for consistency with the filter
+    // and deploy-time threshold check. Hardcoding 5m made fee/TVL look 6x lower
+    // than the configured floor on first comparison.
+    const screeningTimeframe = config.screening.timeframe || "5m";
     const [binData, poolData] = await Promise.allSettled([
       getActiveBin({ pool_address: poolAddress }),
-      getPoolDetail({ pool_address: poolAddress, timeframe: "5m" }),
+      getPoolDetail({ pool_address: poolAddress, timeframe: screeningTimeframe }),
     ]);
 
     const bin = binData.status === "fulfilled" ? binData.value : null;

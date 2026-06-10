@@ -190,19 +190,41 @@ export async function runDryRunCollector() {
         ? (poolFee24hUsd / 24) * intervalHours * posShareOfTvl
         : 0;
 
-      // Value update based on in-range status
+      // Value update — IL is REAL even when in-range (LVR theory).
+      // For single-sided SOL deploys, we approximate IL via the standard 50/50
+      // LP formula scaled by a strategy factor (spot ~0.5, bid_ask ~1.0).
+      // This replaces the prior "zero IL when in-range" assumption which
+      // structurally inflated winners by exactly the IL they were carrying.
       let newValue;
-      if (inRange === true || inRange === null) {
-        // In range: no IL approximated, fees only
+      const priceAtDeploy = pos.price_at_deploy ?? pos.last_price;
+      const validPrices = currentPrice > 0 && priceAtDeploy > 0;
+
+      if (!validPrices) {
+        // Fallback: no price ratio computable, fees only (last-resort)
         newValue = posValueUsd + feeIncrement;
+      } else if (inRange === true || inRange === null) {
+        // IN RANGE — IL accrues from price drift since deploy.
+        // Standard 50/50 IL formula: IL_factor = 2*sqrt(R)/(1+R) - 1, R = P/P0
+        // Strategy scale: spot=0.5, bid_ask=0.75, curve=0.3 (single-sided SOL approximation)
+        const R = currentPrice / priceAtDeploy;
+        const standardIL = (2 * Math.sqrt(R)) / (1 + R) - 1; // negative for R != 1
+        const strategyScale = pos.strategy === "bid_ask" ? 0.75
+                            : pos.strategy === "curve"   ? 0.30
+                            :                              0.50; // spot default
+        const ilFactor = standardIL * strategyScale; // realized IL fraction
+        // Apply IL to the initial deposit, then add accumulated fees
+        const valueFromInitial = pos.initial_value_usd * (1 + ilFactor);
+        newValue = valueFromInitial + (pos.total_fees_accrued_usd + feeIncrement);
       } else if (currentBinId < pos.lower_bin) {
-        // Below range: fully in base token — track price decline/rise
+        // Below range — fully in base token. Track base price decline directly.
+        // (No additional IL — you ARE the base token at this point.)
         const priceChange = pos.last_price > 0
           ? (currentPrice - pos.last_price) / pos.last_price
           : 0;
         newValue = posValueUsd * (1 + priceChange) + feeIncrement;
       } else {
-        // Above range: fully in SOL (quote) — stable + fees
+        // Above range — fully in SOL (quote). Position is locked at the IL it
+        // realized at the moment it exited the range. Just add fees.
         newValue = posValueUsd + feeIncrement;
       }
       newValue = Math.max(0, newValue);
