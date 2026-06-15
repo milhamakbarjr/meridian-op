@@ -1,6 +1,8 @@
 {
+  "_note": "GMGN OpenAPI powers two things: (1) the token-first screening pipeline (set screeningSource=gmgn) and (2) the global_fees_sol fee gate for minTokenFeesSol (more accurate than Jupiter's `fees`). Copy to gmgn-config.json and fill apiKey, or set GMGN_API_KEY in .env / gmgnApiKey in user-config.json. Set feeSource to \"jupiter\" to disable the GMGN fee source.",
   "apiKey": "",
   "baseUrl": "https://openapi.gmgn.ai",
+  "feeSource": "gmgn",
   "interval": "5m",
   "orderBy": "default",
   "direction": "desc",

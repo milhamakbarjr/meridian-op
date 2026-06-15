@@ -251,6 +251,10 @@ function normalizeConfigValue(key, value) {
     "hiveMindPullMode",
     "publicApiKey",
     "agentMeridianApiUrl",
+    "pnlSource",
+    "pnlRpcUrl",
+    "gmgnFeeSource",
+    "gmgnApiKey",
   ]);
   if (value === null) return null;
   if (booleanKeys.has(key)) return coerceBoolean(value, key);
@@ -444,8 +448,14 @@ const toolMap = {
       publicApiKey: ["api", "publicApiKey"],
       agentMeridianApiUrl: ["api", "url"],
       lpAgentRelayEnabled: ["api", "lpAgentRelayEnabled"],
-      // GMGN screening
-      gmgnApiKey: ["gmgn", "apiKey"],
+      // pnl fetcher / poller
+      pnlSource: ["pnl", "source", ["pnlSource"]],
+      pnlRpcUrl: ["pnl", "rpcUrl", ["pnlRpcUrl"]],
+      pnlPollIntervalSec: ["pnl", "pollIntervalSec", ["pnlPollIntervalSec"]],
+      pnlDepositCacheTtlSec: ["pnl", "depositCacheTtlSec", ["pnlDepositCacheTtlSec"]],
+      // GMGN (screening pipeline + fee source)
+      gmgnApiKey: ["gmgn", "apiKey", ["gmgnApiKey"]],
+      gmgnFeeSource: ["gmgn", "feeSource", ["gmgnFeeSource"]],
       gmgnBaseUrl: ["gmgn", "baseUrl"],
       gmgnInterval: ["gmgn", "interval"],
       gmgnOrderBy: ["gmgn", "orderBy"],
@@ -642,10 +652,10 @@ const toolMap = {
     }
 
     // Restart cron jobs if intervals changed
-    const intervalChanged = applied.managementIntervalMin != null || applied.screeningIntervalMin != null;
+    const intervalChanged = applied.managementIntervalMin != null || applied.screeningIntervalMin != null || applied.pnlPollIntervalSec != null;
     if (intervalChanged && _cronRestarter) {
       _cronRestarter();
-      log("config", `Cron restarted — management: ${config.schedule.managementIntervalMin}m, screening: ${config.schedule.screeningIntervalMin}m`);
+      log("config", `Cron restarted — management: ${config.schedule.managementIntervalMin}m, screening: ${config.schedule.screeningIntervalMin}m, pnlPoll: ${config.pnl.pollIntervalSec}s`);
     }
 
     // Skip repeated volatility-driven interval changes; they are operational tuning, not reusable lessons.

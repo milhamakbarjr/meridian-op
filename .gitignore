@@ -18,6 +18,12 @@ dryrun-closed.jsonl
 dryrun-report-*.md
 dryrun/cache/
 
+# GMGN fee-source config (contains API key)
+gmgn-config.json
+
+# Stray Claude Code worktrees
+.claude/worktrees/
+
 # Runtime state (position tracking, lessons — user-specific)
 state.json
 lessons.json
