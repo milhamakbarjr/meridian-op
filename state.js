@@ -11,6 +11,7 @@
 import fs from "fs";
 import { log } from "./logger.js";
 import { repoPath } from "./repo-root.js";
+import { bus } from "./server/bus.js";
 
 const STATE_FILE = repoPath("state.json");
 
@@ -130,6 +131,7 @@ export function markOutOfRange(position_address) {
     pos.out_of_range_since = new Date().toISOString();
     save(state);
     log("state", `Position ${position_address} marked out of range`);
+    bus.publish("oor_enter", { position: position_address, pool_name: pos.pool_name, since: pos.out_of_range_since });
   }
 }
 
@@ -141,9 +143,11 @@ export function markInRange(position_address) {
   const pos = state.positions[position_address];
   if (!pos) return;
   if (pos.out_of_range_since) {
+    const wasSince = pos.out_of_range_since;
     pos.out_of_range_since = null;
     save(state);
     log("state", `Position ${position_address} back in range`);
+    bus.publish("oor_exit", { position: position_address, pool_name: pos.pool_name, was_since: wasSince });
   }
 }
 
@@ -196,6 +200,7 @@ export function recordClose(position_address, reason) {
   pushEvent(state, { action: "close", position: position_address, pool_name: pos.pool_name || pos.pool, reason });
   save(state);
   log("state", `Position ${position_address} marked closed: ${reason}`);
+  bus.publish("position_closed", { position: position_address, pool: pos.pool, pool_name: pos.pool_name, reason, closed_at: pos.closed_at, amount_sol: pos.amount_sol, peak_pnl_pct: pos.peak_pnl_pct });
 }
 
 /**

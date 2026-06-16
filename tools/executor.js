@@ -42,6 +42,7 @@ const TIMEFRAME_MINUTES = {
 };
 import { log, logAction } from "../logger.js";
 import { notifyDeploy, notifyClose, notifySwap } from "../telegram.js";
+import { bus } from "../server/bus.js";
 import { registerDryRunDeploy } from "../dryrun/registrar.js";
 
 const SENSITIVE_CONFIG_KEYS = new Set([
@@ -727,6 +728,7 @@ export async function executeTool(name, args) {
   }
 
   // ─── Execute ──────────────────────────────
+  bus.publish("tool_call_start", { tool: name, args: redactAppliedConfig(args) });
   try {
     const result = await fn(args);
     const duration = Date.now() - startTime;
@@ -739,6 +741,7 @@ export async function executeTool(name, args) {
       duration_ms: duration,
       success,
     });
+    bus.publish("tool_call_finish", { tool: name, success, duration_ms: duration, result: summarizeResult(result) });
 
     if (success) {
       if (name === "swap_token" && result.tx) {

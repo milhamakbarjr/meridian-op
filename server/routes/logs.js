@@ -8,6 +8,19 @@ function todayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function resolveLogFile(name) {
+  const resolved = fs.realpathSync.native
+    ? fs.realpathSync(path.join(LOGS_DIR, name))
+    : path.resolve(LOGS_DIR, name);
+  const root = fs.existsSync(LOGS_DIR) ? fs.realpathSync(LOGS_DIR) : LOGS_DIR;
+  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+    throw new Error("path escape");
+  }
+  return resolved;
+}
+
 function tailFile(filepath, maxLines) {
   if (!fs.existsSync(filepath)) return [];
   const content = fs.readFileSync(filepath, "utf8");
@@ -21,7 +34,10 @@ export async function registerLogsRoutes(app) {
     const lines = Math.min(1000, Number(req.query?.lines ?? 200));
     const level = req.query?.level || null;
     const date = req.query?.date || todayDate();
-    const file = path.join(LOGS_DIR, `agent-${date}.log`);
+    if (!DATE_RE.test(date)) return { error: "invalid date" };
+    let file;
+    try { file = resolveLogFile(`agent-${date}.log`); }
+    catch { return { error: "invalid date" }; }
     let tail = tailFile(file, lines * 2);
     if (level) {
       const re = new RegExp(`\\[${level.toUpperCase()}\\]`, "i");
@@ -35,7 +51,10 @@ export async function registerLogsRoutes(app) {
     const lines = Math.min(2000, Number(req.query?.lines ?? 200));
     const tool = req.query?.tool || null;
     const date = req.query?.date || todayDate();
-    const file = path.join(LOGS_DIR, `actions-${date}.jsonl`);
+    if (!DATE_RE.test(date)) return { error: "invalid date" };
+    let file;
+    try { file = resolveLogFile(`actions-${date}.jsonl`); }
+    catch { return { error: "invalid date" }; }
     const raw = tailFile(file, lines * 3);
     const parsed = raw
       .map((l) => { try { return JSON.parse(l); } catch { return null; } })

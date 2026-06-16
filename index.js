@@ -34,6 +34,7 @@ import { stageSignals } from "./signal-tracker.js";
 import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
 import { appendDecision } from "./decision-log.js";
+import { bus } from "./server/bus.js";
 
 process.on("unhandledRejection", (err) => {
   log("unhandled_rejection", `${err?.message || err}`);
@@ -205,6 +206,8 @@ export async function runManagementCycle({ silent = false } = {}) {
   _managementBusy = true;
   timers.managementLastRun = Date.now();
   log("cron", "Starting management cycle");
+  const _cycleStart = Date.now();
+  bus.publish("cycle_start", { cycle: "management", silent });
   let mgmtReport = null;
   let positions = [];
   let liveMessage = null;
@@ -364,6 +367,7 @@ After executing, write a brief one-line result per position.
     mgmtReport = `Management cycle failed: ${error.message}`;
   } finally {
     _managementBusy = false;
+    bus.publish("cycle_finish", { cycle: "management", duration_ms: Date.now() - _cycleStart, positions: positions.length });
     if (!silent && telegramEnabled()) {
       if (mgmtReport) {
         if (liveMessage) await liveMessage.finalize(stripThink(mgmtReport)).catch(() => {});
@@ -386,6 +390,8 @@ export async function runScreeningCycle({ silent = false } = {}) {
   }
   _screeningBusy = true; // set immediately — prevents TOCTOU race with concurrent callers
   _screeningLastTriggered = Date.now();
+  const _scrCycleStart = Date.now();
+  bus.publish("cycle_start", { cycle: "screening", silent });
 
   // Hard guards — don't even run the agent if preconditions aren't met
   let prePositions, preBalance;
@@ -740,6 +746,7 @@ IMPORTANT:
     screenReport = `Screening cycle failed: ${error.message}`;
   } finally {
     _screeningBusy = false;
+    bus.publish("cycle_finish", { cycle: "screening", duration_ms: Date.now() - _scrCycleStart });
     if (!silent && telegramEnabled()) {
       if (screenReport) {
         if (liveMessage) await liveMessage.finalize(stripThink(screenReport)).catch(() => {});

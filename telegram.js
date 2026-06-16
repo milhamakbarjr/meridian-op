@@ -461,7 +461,13 @@ export function stopPolling() {
 }
 
 // ─── Notification helpers ────────────────────────────────────────
+// Each notifier publishes a structured event to the dashboard bus *before*
+// formatting/sending the Telegram message. The bus is a stock EventEmitter;
+// if no subscribers (dashboard disabled), publishes are no-ops.
+import { bus } from "./server/bus.js";
+
 export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee }) {
+  bus.publish("deploy_finish", { pair, amount_sol: amountSol, position, tx, price_range: priceRange, range_coverage: rangeCoverage, bin_step: binStep, base_fee: baseFee });
   if (hasActiveLiveMessage()) return;
   const priceStr = priceRange
     ? `Price range: ${priceRange.min < 0.0001 ? priceRange.min.toExponential(3) : priceRange.min.toFixed(6)} – ${priceRange.max < 0.0001 ? priceRange.max.toExponential(3) : priceRange.max.toFixed(6)}\n`
@@ -484,6 +490,7 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
 }
 
 export async function notifyClose({ pair, pnlUsd, pnlPct }) {
+  bus.publish("close_finish", { pair, pnl_usd: pnlUsd, pnl_pct: pnlPct });
   if (hasActiveLiveMessage()) return;
   const sign = pnlUsd >= 0 ? "+" : "";
   await sendHTML(
@@ -493,6 +500,7 @@ export async function notifyClose({ pair, pnlUsd, pnlPct }) {
 }
 
 export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOut, tx }) {
+  bus.publish("swap_finish", { input_symbol: inputSymbol, output_symbol: outputSymbol, amount_in: amountIn, amount_out: amountOut, tx });
   if (hasActiveLiveMessage()) return;
   await sendHTML(
     `🔄 <b>Swapped</b> ${inputSymbol} → ${outputSymbol}\n` +
@@ -502,6 +510,7 @@ export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOu
 }
 
 export async function notifyOutOfRange({ pair, minutesOOR }) {
+  bus.publish("oor_warn", { pair, minutes_oor: minutesOOR });
   if (hasActiveLiveMessage()) return;
   await sendHTML(
     `⚠️ <b>Out of Range</b> ${pair}\n` +

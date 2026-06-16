@@ -13,6 +13,7 @@ import { registerConfigRoutes } from "./routes/config.js";
 import { registerWalletRoutes } from "./routes/wallet.js";
 import { registerHivemindRoutes } from "./routes/hivemind.js";
 import { registerLogsRoutes } from "./routes/logs.js";
+import { registerWsRoutes } from "./ws/index.js";
 
 /**
  * Start the dashboard HTTP/WS server. Idempotent — multiple calls return the
@@ -40,6 +41,9 @@ export async function startServer({ port = 7474, host = "127.0.0.1", origin = "h
 
   // Lock all routes to loopback origin
   app.addHook("preHandler", localhostOnly);
+
+  // WebSocket endpoint at /ws (must register before route prefixing)
+  await registerWsRoutes(app);
 
   // Liveness probe — no auth, no route prefix
   app.get("/healthz", async () => ({ ok: true, ts: new Date().toISOString(), seq: bus.currentSeq() }));
