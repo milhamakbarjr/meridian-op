@@ -869,6 +869,16 @@ Summarize the current portfolio health, total fees earned, and performance of al
   // Store interval ref so stopCronJobs can clear it
   _cronTasks._pnlPollInterval = pnlPollInterval;
   log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m${process.env.DRY_RUN === "true" ? " | DRY_RUN sim-collector active" : ""}`);
+
+  // ── Dashboard API server (opt-in via DASHBOARD_ENABLED=true) ──
+  // Lazy-imported so fastify et al. only resolve when the flag is set.
+  // Server is idempotent (singleton); subsequent calls (e.g. cron restart) are no-ops.
+  if (process.env.DASHBOARD_ENABLED === "true") {
+    const port = Number(process.env.DASHBOARD_PORT ?? 7474);
+    import("./server/index.js")
+      .then(({ startServer }) => startServer({ port }))
+      .catch((e) => log("dashboard_warn", `Dashboard server failed to start: ${e.message}`));
+  }
 }
 
 // ═══════════════════════════════════════════

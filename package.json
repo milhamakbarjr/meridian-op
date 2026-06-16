@@ -28,11 +28,14 @@
     ]
   },
   "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/websocket": "^10.0.1",
     "@meteora-ag/dlmm": "1.9.4",
     "@solana/web3.js": "^1.95.0",
     "bn.js": "^5.2.1",
     "bs58": "^5.0.0",
     "dotenv": "^17.3.1",
+    "fastify": "^4.29.1",
     "jsonrepair": "^3.13.3",
     "node-cron": "^3.0.3",
     "openai": "^4.73.0"
