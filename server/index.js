@@ -5,6 +5,14 @@ import { localhostOnly } from "./middleware/localhost-only.js";
 import { bus } from "./bus.js";
 
 import { registerStateRoutes } from "./routes/state.js";
+import { registerPositionsRoutes } from "./routes/positions.js";
+import { registerDecisionsRoutes } from "./routes/decisions.js";
+import { registerLessonsRoutes } from "./routes/lessons.js";
+import { registerPoolsRoutes } from "./routes/pools.js";
+import { registerConfigRoutes } from "./routes/config.js";
+import { registerWalletRoutes } from "./routes/wallet.js";
+import { registerHivemindRoutes } from "./routes/hivemind.js";
+import { registerLogsRoutes } from "./routes/logs.js";
 
 /**
  * Start the dashboard HTTP/WS server. Idempotent — multiple calls return the
@@ -40,6 +48,14 @@ export async function startServer({ port = 7474, host = "127.0.0.1", origin = "h
   await app.register(
     async (instance) => {
       await registerStateRoutes(instance);
+      await registerPositionsRoutes(instance);
+      await registerDecisionsRoutes(instance);
+      await registerLessonsRoutes(instance);
+      await registerPoolsRoutes(instance);
+      await registerConfigRoutes(instance);
+      await registerWalletRoutes(instance);
+      await registerHivemindRoutes(instance);
+      await registerLogsRoutes(instance);
     },
     { prefix: "/api/v1" },
   );
