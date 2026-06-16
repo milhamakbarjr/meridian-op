@@ -23,6 +23,14 @@ export async function registerWsRoutes(app) {
 
   const clients = new Set();
 
+  const ALLOWED_ORIGINS = new Set(
+    (process.env.DASHBOARD_ORIGINS ||
+      "http://localhost:3000,http://127.0.0.1:3000")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
   // Single bus subscription, fans to all clients
   bus.on("event", (frame) => {
     if (clients.size === 0) return;
@@ -39,6 +47,12 @@ export async function registerWsRoutes(app) {
   });
 
   app.get("/ws", { websocket: true }, (socket, req) => {
+    const origin = req.headers.origin;
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+      try { socket.close(1008, "origin_not_allowed"); } catch { /* swallow */ }
+      log("dashboard", `WS rejected: origin=${origin}`);
+      return;
+    }
     clients.add(socket);
     socket.__filter = null;
 

@@ -2,6 +2,7 @@ import { config } from "../../config.js";
 import { getStateSummary, getTrackedPositions } from "../../state.js";
 import { getPerformanceSummary } from "../../lessons.js";
 import { bus } from "../bus.js";
+import { getPauseState } from "./control.js";
 
 /**
  * `/state/*` routes — cheap snapshots derived from local JSON state and live
@@ -22,7 +23,9 @@ export async function registerStateRoutes(app) {
       },
       bot: {
         dry_run: process.env.DRY_RUN === "true",
-        paused: false, // wired in Phase D
+        paused: getPauseState().paused,
+        pause_reason: getPauseState().reason,
+        paused_since: getPauseState().since,
       },
       cycles: {
         management_interval_min: config.schedule.managementIntervalMin,

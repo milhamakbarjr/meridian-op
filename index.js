@@ -203,6 +203,7 @@ function stopCronJobs() {
 
 export async function runManagementCycle({ silent = false } = {}) {
   if (_managementBusy) return null;
+  if (await isCyclePaused()) { log("cron", "Management cycle skipped — bot paused"); return null; }
   _managementBusy = true;
   timers.managementLastRun = Date.now();
   log("cron", "Starting management cycle");
@@ -388,6 +389,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
     log("cron", "Screening skipped — previous cycle still running");
     return null;
   }
+  if (await isCyclePaused()) { log("cron", "Screening cycle skipped — bot paused"); return null; }
   _screeningBusy = true; // set immediately — prevents TOCTOU race with concurrent callers
   _screeningLastTriggered = Date.now();
   const _scrCycleStart = Date.now();
@@ -882,9 +884,30 @@ Summarize the current portfolio health, total fees earned, and performance of al
   // Server is idempotent (singleton); subsequent calls (e.g. cron restart) are no-ops.
   if (process.env.DASHBOARD_ENABLED === "true") {
     const port = Number(process.env.DASHBOARD_PORT ?? 7474);
-    import("./server/index.js")
-      .then(({ startServer }) => startServer({ port }))
+    Promise.all([
+      import("./server/index.js"),
+      import("./server/routes/cycles.js"),
+    ])
+      .then(async ([{ startServer }, { registerCycleRunners }]) => {
+        registerCycleRunners({ runManagementCycle, runScreeningCycle });
+        await startServer({ port });
+      })
       .catch((e) => log("dashboard_warn", `Dashboard server failed to start: ${e.message}`));
+  }
+}
+
+/**
+ * Cooperative pause check — invoked by cron tasks before running a cycle.
+ * Reads from the dashboard's pause state if it's loaded, else returns false
+ * (server module is lazy, may not exist yet).
+ */
+async function isCyclePaused() {
+  if (process.env.DASHBOARD_ENABLED !== "true") return false;
+  try {
+    const { isPaused } = await import("./server/routes/control.js");
+    return isPaused();
+  } catch {
+    return false;
   }
 }
 

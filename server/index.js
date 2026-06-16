@@ -13,6 +13,8 @@ import { registerConfigRoutes } from "./routes/config.js";
 import { registerWalletRoutes } from "./routes/wallet.js";
 import { registerHivemindRoutes } from "./routes/hivemind.js";
 import { registerLogsRoutes } from "./routes/logs.js";
+import { registerControlRoutes } from "./routes/control.js";
+import { registerCyclesRoutes } from "./routes/cycles.js";
 import { registerWsRoutes } from "./ws/index.js";
 
 /**
@@ -60,6 +62,8 @@ export async function startServer({ port = 7474, host = "127.0.0.1", origin = "h
       await registerWalletRoutes(instance);
       await registerHivemindRoutes(instance);
       await registerLogsRoutes(instance);
+      await registerControlRoutes(instance);
+      await registerCyclesRoutes(instance);
     },
     { prefix: "/api/v1" },
   );
