@@ -15,6 +15,7 @@ import { registerHivemindRoutes } from "./routes/hivemind.js";
 import { registerLogsRoutes } from "./routes/logs.js";
 import { registerControlRoutes } from "./routes/control.js";
 import { registerCyclesRoutes } from "./routes/cycles.js";
+import { registerReplRoutes } from "./routes/repl.js";
 import { registerWsRoutes } from "./ws/index.js";
 
 /**
@@ -64,6 +65,7 @@ export async function startServer({ port = 7474, host = "127.0.0.1", origin = "h
       await registerLogsRoutes(instance);
       await registerControlRoutes(instance);
       await registerCyclesRoutes(instance);
+      await registerReplRoutes(instance);
     },
     { prefix: "/api/v1" },
   );
