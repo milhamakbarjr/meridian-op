@@ -58,3 +58,13 @@ discord-signals.json
 
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
+
+# Process PID files
+*.pid
+meridian.pid
+
+# User-config backups / snapshots
+user-config.json.*
+
+# Local archive (session reports, audits, PR docs)
+archive/

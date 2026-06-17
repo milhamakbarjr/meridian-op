@@ -1,0 +1,1227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meridian Dashboard — PRD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0B0E12;
+      --panel: #13171D;
+      --panel-2: #1A1F27;
+      --border: #1F242C;
+      --text: #E5E7EB;
+      --text-muted: #9CA3AF;
+      --text-dim: #6B7280;
+      --positive: #22C55E;
+      --negative: #EF4444;
+      --warning: #F59E0B;
+      --info: #3B82F6;
+      --accent: #8B9CB3;
+      --code-bg: #0F1318;
+      --link: #93C5FD;
+      --link-hover: #BFDBFE;
+      --selection: #1E3A5F;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "DM Sans", "Inter", sans-serif;
+      font-feature-settings: "ss01", "ss02";
+    }
+    ::selection { background: var(--selection); color: var(--text); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    /* TOC sidebar */
+    aside {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      max-height: 100vh;
+      overflow-y: auto;
+      padding: 28px 16px 28px 28px;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+      font-size: 13px;
+    }
+    aside h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin: 0 0 12px 0;
+      font-weight: 600;
+    }
+    aside ol {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    aside ol li { margin: 2px 0; }
+    aside ol li.lvl-2 { padding-left: 0; }
+    aside ol li.lvl-3 { padding-left: 14px; font-size: 12.5px; color: var(--text-muted); }
+    aside ol li.lvl-4 { padding-left: 28px; font-size: 12px; color: var(--text-dim); }
+    aside a {
+      color: inherit;
+      text-decoration: none;
+      display: block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border-left: 2px solid transparent;
+    }
+    aside a:hover {
+      background: var(--panel);
+      color: var(--text);
+      border-left-color: var(--accent);
+    }
+    aside a.active {
+      background: var(--panel);
+      color: var(--text);
+      border-left-color: var(--info);
+    }
+
+    main {
+      padding: 56px 64px 120px 64px;
+      max-width: 920px;
+      overflow-x: hidden;
+    }
+
+    .header-strip {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 32px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .header-strip .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--positive);
+      box-shadow: 0 0 6px var(--positive);
+    }
+    .header-strip strong { color: var(--text); font-weight: 600; }
+    .header-strip .pill {
+      margin-left: auto;
+      padding: 3px 8px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Markdown rendering */
+    h1, h2, h3, h4, h5 {
+      color: var(--text);
+      font-weight: 600;
+      line-height: 1.25;
+      scroll-margin-top: 24px;
+    }
+    h1 {
+      font-size: 32px;
+      margin: 0 0 8px 0;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+    }
+    h2 {
+      font-size: 24px;
+      margin: 48px 0 16px 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    h3 { font-size: 19px; margin: 32px 0 12px 0; }
+    h4 { font-size: 16px; margin: 24px 0 8px 0; color: var(--text-muted); }
+    h5 { font-size: 14px; margin: 16px 0 8px 0; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+    p { margin: 12px 0; color: var(--text); }
+    strong { color: var(--text); font-weight: 600; }
+    em { color: var(--text-muted); font-style: italic; }
+
+    a { color: var(--link); text-decoration: none; border-bottom: 1px dotted var(--link); }
+    a:hover { color: var(--link-hover); border-bottom-style: solid; }
+
+    ul, ol { margin: 12px 0; padding-left: 24px; color: var(--text); }
+    ul li, ol li { margin: 4px 0; }
+    ul ul, ol ol, ul ol, ol ul { margin: 4px 0; }
+
+    code {
+      font-family: "Geist Mono", "JetBrains Mono", "SF Mono", Menlo, monospace;
+      font-size: 13px;
+      background: var(--code-bg);
+      color: #F0C674;
+      padding: 1px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      font-variant-numeric: tabular-nums;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 16px 0;
+      line-height: 1.45;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--text);
+      font-size: 12.5px;
+    }
+
+    blockquote {
+      margin: 16px 0;
+      padding: 12px 16px;
+      border-left: 3px solid var(--info);
+      background: rgba(59, 130, 246, 0.06);
+      color: var(--text-muted);
+      border-radius: 0 6px 6px 0;
+    }
+    blockquote p { margin: 4px 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13.5px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      font-variant-numeric: tabular-nums;
+    }
+    thead { background: var(--panel-2); }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: rgba(255, 255, 255, 0.015); }
+    td code { font-size: 12px; }
+
+    hr { border: 0; border-top: 1px solid var(--border); margin: 32px 0; }
+
+    /* Color-coded inline annotations */
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 4px;
+      border: 1px solid;
+    }
+    .badge.p0 { background: rgba(239, 68, 68, 0.1); color: var(--negative); border-color: rgba(239, 68, 68, 0.3); }
+    .badge.p1 { background: rgba(245, 158, 11, 0.1); color: var(--warning); border-color: rgba(245, 158, 11, 0.3); }
+
+    /* Scroll-target highlight */
+    h2:target, h3:target, h4:target {
+      background: rgba(59, 130, 246, 0.08);
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-left: -8px;
+    }
+
+    /* Print */
+    @media print {
+      aside { display: none; }
+      .layout { grid-template-columns: 1fr; }
+      main { padding: 24px; max-width: none; }
+      body { background: white; color: black; }
+    }
+
+    /* Narrow screens */
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      aside { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
+      main { padding: 32px 24px 80px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <h2>Contents</h2>
+      <ol id="toc"></ol>
+    </aside>
+    <main>
+      <div class="header-strip">
+        <span class="dot"></span>
+        <strong>Meridian Dashboard PRD</strong>
+        <span style="color: var(--text-dim);">·</span>
+        <span>v1 · 2026-06-16</span>
+        <span class="pill">Companion: API_SERVER_SPEC.md</span>
+      </div>
+      <article id="content"></article>
+    </main>
+  </div>
+
+  <script id="prd-source" type="text/markdown">
+# Meridian Dashboard — Product Requirements Document
+
+**Audience:** the Claude session that will build the dashboard in `/Volumes/Data 2/projects/meridian-ui`.
+**Companion document:** `API_SERVER_SPEC.md` in this same folder describes the bot-side HTTP/WebSocket server that the dashboard consumes.
+**Last revised:** 2026-06-16.
+
+---
+
+## 0. How to use this document
+
+1. Read `CLAUDE.md` in `meridian-op` first to understand the bot. The dashboard reflects everything that document describes.
+2. Read `API_SERVER_SPEC.md` second to know your data interface.
+3. Skim this whole PRD before scaffolding — the implementation phases (§13) assume you've internalized the panel catalog (§5) and information architecture (§4).
+4. Use the existing `meridian-ui/CLAUDE.md` as ground truth for stack choices (TanStack Start, Tailwind v4, shadcn/ui base-vega/mist, Bun). Don't deviate without reason.
+
+---
+
+## 1. Purpose & scope
+
+### What this dashboard is
+
+A **localhost operator console** for the Meridian DLMM LP bot. It is the operator's primary "is the bot healthy and making money?" surface when at the desk, and it adds capabilities that don't fit Telegram: deep history, charts, per-pool analytics, candidate inspection, config diff/audit, full REPL.
+
+### What this dashboard is not
+
+- **Not a replacement for Telegram.** Telegram remains the mobile/away-from-desk surface. The dashboard is complementary. Operator stated this explicitly.
+- **Not a multi-tenant SaaS.** One operator, one bot, one machine. No login.
+- **Not the bot itself.** The bot already runs as `node index.js`. The dashboard is a separate process (`bun dev` on port 3000) consuming the bot's HTTP/WebSocket API.
+- **Not a place for keys or secrets.** Wallet private key, API keys, mnemonic must never reach the browser. Config endpoint redacts them.
+
+### Primary goals
+
+1. **Trust** — operator can glance at the status strip and know the bot is alive, in-range, and net-positive.
+2. **Explainability** — every deploy/close/skip has a visible "why," sourced from `decision-log.json`.
+3. **Control** — pause/resume, close-one, close-all, claim, swap, set-instruction, edit-config, REPL — all available without SSH'ing in.
+4. **Forensics** — when something goes wrong, the operator can reconstruct the last 24h from the dashboard alone (decisions, tool calls, OOR transitions, config diffs, lesson additions, RPC errors).
+
+### Success criteria (acceptance)
+
+- Operator can answer all of these in <10 seconds of dashboard time:
+  - Is the bot running? When was the last cycle?
+  - How many SOL are in open positions right now? Total value? Total unclaimed fees?
+  - Net P&L over 24h / 7d / all-time?
+  - What's the current drawdown vs all-time peak?
+  - Which positions are out of range right now, and for how long?
+  - What was the most recent decision and why?
+  - How many SOL/USD have we spent on LLM cycles in the last 24h?
+- Operator can do all of these in ≤2 clicks each (with confirmation):
+  - Pause the bot.
+  - Close any single position.
+  - Claim fees on a position.
+  - Set a position instruction note.
+  - Force a screening or management cycle.
+- Operator can do these in ≤4 clicks:
+  - Edit any user-config key (with revert button on the next page load).
+  - Send a chat REPL prompt to the GENERAL agent.
+  - Acknowledge / silence an alert.
+
+---
+
+## 2. Personas & journeys
+
+Single persona: **Operator**. Power user. Treats the bot as a serious capital-management tool. Already comfortable with Telegram, CLI, and reading JSON.
+
+### Journey 1 — Morning glance (most common, daily, <30s)
+
+> Wake up, open dashboard, see overnight performance, decide whether to intervene.
+
+Lands on **Overview**. Sees:
+- Status strip: bot RUNNING, last heartbeat 4s ago, 2/3 positions open, wallet 12.4 SOL.
+- 24h net P&L: +0.34 SOL (+2.7%). Green.
+- Drawdown: 0% current, max 4.1%.
+- 2 OOR alerts overnight, both resolved.
+- 1 new lesson auto-recorded.
+
+No action needed. Closes tab.
+
+### Journey 2 — "Why did it close that one?" (a few times a week)
+
+> Telegram alert says "Closed XYZ-SOL, PnL -0.8%." Operator wants more detail.
+
+Clicks **Decisions** in left nav. Sees the close decision at top: `Rule 3: pumped far above range — current bin -392 vs range -478 to -409`. Clicks the decision to expand. Sees the rejected[] candidates that almost replaced it, the pool-memory recall the LLM saw, and the position's last 12 PnL ticks before close.
+
+### Journey 3 — "Something is wrong" (rare, urgent)
+
+> Telegram queue stops sending notifications. Or RPC errors spike.
+
+Goes to **Health**. Sees red cron heartbeats: management cycle hasn't fired in 18 minutes (interval is 10). RPC p99 latency is 8500ms. Clicks **PAUSE** in status strip. Confirms.
+
+### Journey 4 — Tuning / experimenting (weekly)
+
+> Operator reads new research, wants to lower `minFeeActiveTvlRatio` from 0.4 to 0.3.
+
+Goes to **Config**. Finds `minFeeActiveTvlRatio`. Sees its current value, default, last 5 changes (LLM-set vs user-set vs auto-evolve). Edits to 0.3, types reason "testing wider funnel per Yunus-2 research", clicks Save. Confirms typed value. Dashboard shows the diff committed and a `config_changed` event in the audit log.
+
+### Journey 5 — Free-form question (occasional)
+
+> "Why isn't the bot deploying — what does it think about TURTLE-SOL?"
+
+Opens **REPL** panel (drawer from right edge). Types: "What's blocking TURTLE-SOL right now?" Sees the GENERAL agent's tool calls stream in (get_top_candidates, check_smart_wallets_on_pool, get_pool_memory) and the final reply.
+
+---
+
+## 3. Non-functional requirements
+
+- **Latency budget.** Status strip data ≤200ms after WS event. REST snapshot calls ≤500ms for cached, ≤5s for on-chain (`?force=true`).
+- **Refresh model.** Snapshots fetched on route mount via TanStack Query, then patched by WebSocket events. Polling fallback at 5s if WS down ≥30s, with visible "Polling fallback" badge in status strip.
+- **Browser support.** Chromium-based desktop only. No mobile responsive design required, but should not break at narrow widths (status strip + single-column stack).
+- **Theme.** Dark mode default. Light mode optional (low priority — implement only if time allows). CVD-safe color overrides via settings.
+- **Accessibility.** Tabular numerals everywhere. Every red/green pairs with sign + glyph. Keyboard navigation in tables.
+- **State across sessions.** Persist read-only mode toggle, theme, column visibility, sort orders, sidebar collapsed state in `localStorage`.
+- **Performance.** Open Positions table re-renders ≤1Hz even if PnL ticks arrive at 3Hz (debounce). Equity curve uses TradingView lightweight-charts to avoid Recharts stuttering at >500 points.
+
+---
+
+## 4. Information architecture
+
+### Top-level navigation (left rail, 56px collapsed, 220px expanded)
+
+```
+▸ Overview              (default landing)
+  Positions             (open + history)
+  Pools                 (per-pool aggregate)
+  Decisions             (decision log stream)
+  Candidates            (live screening)
+  Lessons               (lessons + performance)
+  LLM Activity          (tokens, cost, steps)
+  Health                (cron, RPC, queues)
+  Config                (settings + diff)
+  Audit                 (every state mutation)
+  Alerts ●3             (badge = unacked count)
+```
+
+### Persistent surfaces (visible from any route)
+
+- **Status strip** (sticky, top, 48px). See §6.
+- **REPL drawer** (right edge, collapsed by default, slide-out on demand). See §6.13.
+- **Read-only toggle** (status strip right side). Persisted.
+
+### Routes (TanStack Router file-based)
+
+```
+src/routes/
+  __root.tsx              shell, status strip, left nav, drawer
+  index.tsx               redirects to /overview
+  overview.tsx
+  positions/
+    index.tsx             open + history tabs
+    $address.tsx          single position deep-dive
+  pools/
+    index.tsx             pool table
+    $address.tsx          pool detail
+  decisions/
+    index.tsx
+    $id.tsx               (modal or inline expand — implementer's call)
+  candidates.tsx
+  lessons.tsx
+  llm.tsx
+  health.tsx
+  config.tsx
+  audit.tsx
+  alerts.tsx
+```
+
+---
+
+## 5. Panel catalog (industry-standard set, ranked)
+
+This is the prescriptive content list. Each panel below maps to one or more components. Items are ranked by criticality for an LP bot operator. The first 7 are P0 (must ship in MVP); the rest are P1 unless flagged.
+
+### 5.1 Status Strip (P0, sticky)
+
+Always visible. Operator's "is anything on fire?" surface.
+
+Contents (left → right):
+- Bot status pill: `● RUNNING` (green) / `● PAUSED` (amber) / `● DEGRADED` (amber) / `● STOPPED` (red).
+- Last heartbeat: `HB 4s ago` — turns amber after 30s, red after 2min.
+- Last cycle: `Cycle 2m ago` — color-coded vs `managementIntervalMin`.
+- Wallet: `Wallet 12.4 SOL` (uses `solMode` from config to decide SOL vs USD primary).
+- Positions: `Pos 2/3` (open / `maxPositions`).
+- 24h badge: `24h +0.34 SOL (+2.7%)` — green/red with arrow + sign.
+- Right side: `[PAUSE]` `[KILL]` `[READ-ONLY ☑]` icons: ⚙ settings, ⓘ build info.
+
+Source: `GET /api/v1/state/summary` snapshot + WebSocket `pnl_tick`, `bot.status`, `cycle.start`, `cycle.end`.
+
+### 5.2 Equity Curve (P0)
+
+Single most-trusted "is the bot working?" panel. Line chart, balance over time, includes unrealized P&L.
+
+- X axis: time. Selectable: 24h / 7d / 30d / all.
+- Y axis: SOL value (toggle to USD).
+- Series: cumulative realized P&L (solid line) + unrealized overlay (dashed). Optional: net deposits/withdrawals annotation markers.
+- Hover: timestamp, balance, peak-to-date, drawdown-from-peak.
+- Implementation: TradingView lightweight-charts. Source: `GET /api/v1/performance/equity-curve`.
+
+### 5.3 Drawdown / Underwater (P0)
+
+Area chart below zero showing peak-to-trough drawdown over the same timeframe as equity curve.
+
+- Highlight current drawdown (shaded slab) and max-ever drawdown (horizontal line + label).
+- Same X axis as equity curve. Stack vertically on Overview; same component pair as Freqtrade FreqUI.
+
+### 5.4 Open Positions Table (P0)
+
+One row per DLMM position. Full-width.
+
+| Column | Source | Notes |
+|---|---|---|
+| Pool / Pair | `pool_name` | Click → position detail page. Show base mint short-address tooltip. |
+| Age | derived from `deployed_at` | Format `2h 14m`. |
+| Deployed | `amount_sol` | SOL, 2dp. |
+| Value | `total_value_usd` | Toggle SOL/USD via `solMode`. |
+| PnL % | `pnl_pct` | Color + sign + arrow. Sparkline of last 30 ticks. |
+| PnL USD | derived | |
+| Fees Earned | `total_fees_claimed_usd + unclaimed_fees_usd` | |
+| Fee/IL | derived: `fees_total / abs(impermanent_loss)` | The LP north-star metric. |
+| TIR % | derived: time-in-range from snapshots | "Time in Range." |
+| Δ Bin | `active_bin - active_bin_at_deploy` (signed) | Negative = price dropped through bins. |
+| Strategy | `strategy` | spot / curve / bid_ask. |
+| Action | computed locally OR via `/positions/open` joined with deterministic rules | STAY / CLOSE / CLAIM / INSTRUCTION pill. |
+| Row actions | `[Close]` `[Claim]` `[Note]` `[Detail →]` | All write actions use confirmation tokens. |
+
+- Sort: any column. Default by Age desc.
+- Column visibility: persisted in localStorage.
+- Row state colors: green (in-range, healthy), amber (OOR or low fee yield), red (stop-loss imminent or stale).
+- Source: `GET /api/v1/positions/open`, patched by `position.updated` / `pnl_tick` events.
+
+### 5.5 P&L Attribution Panel (P0)
+
+Stacked bar — for each closed position OR aggregated daily — showing Fees Earned vs Impermanent Loss vs Realized P&L vs Gas/Swap Cost.
+
+The rationale: `Net = Fees + Incentives − IL − Gas`. Without this view, operator can't tell whether the bot is "earning fees but bleeding to IL" — a real failure mode the project's MEMORY.md `feedback_data_collection.md` baseline (`0.92× fee/IL`) already monitors.
+
+- Toggle: aggregate (24h / 7d / 30d) or per-position list.
+- Implementation: Recharts stacked bar. Source: `GET /api/v1/performance` joined client-side.
+
+### 5.6 Decision Log Stream (P0)
+
+Reverse-chronological feed of `decision-log.json` entries. The "what did the bot just do and why?" surface.
+
+For each entry show:
+- Timestamp + `actor` (SCREENER / MANAGER / GENERAL) + `type` icon.
+- Pool / position (linkable).
+- One-line summary.
+- Expand → `reason`, `risks[]`, `metrics{}`, and the **rejected[] candidates** (collapsible — this is the highest-signal field). For close decisions, also show the PnL at close + the deterministic rule fired.
+
+Source: `GET /api/v1/decisions`, patched by `decision.appended` events.
+
+### 5.7 Per-Pool Performance Table (P0)
+
+Aggregated view of `pool-memory.json`. One row per pool.
+
+| Column | Source |
+|---|---|
+| Pool | `name` |
+| Total deploys | `total_deploys` |
+| Win rate | `win_rate` |
+| Adj win rate | `adjusted_win_rate` (excludes OOR pumps) |
+| Avg PnL % | `avg_pnl_pct` |
+| Avg hold | derived from `deploys[].minutes_held` |
+| Last outcome | `last_outcome` |
+| Cooldown | `cooldown_until` and `base_mint_cooldown_until` — render as countdown |
+| Notes | `notes[]` count, click to expand |
+
+Click row → pool detail page (5.7b) with snapshot trend chart, all deploys, all notes.
+
+Source: `GET /api/v1/pools` + `GET /api/v1/pools/:address`.
+
+### 5.8 LLM Activity / Cost Panel (P1, high priority)
+
+- Tokens-in / tokens-out per cycle, $ spend per cycle.
+- Time series (last 24h) of token spend, per role (SCREENER vs MANAGER vs GENERAL).
+- Last cycle steps, fallback-model trigger count.
+- Per-tool call count + average duration.
+
+Source: derive from `logs/actions-YYYY-MM-DD.jsonl` audit + LLM provider metadata in `actions` logs. Patched by `llm.step` / `llm.cycle_summary` events.
+
+### 5.9 Bot Health Panel (P0)
+
+Google SRE Four Golden Signals applied to a trading bot.
+
+- Cron heartbeats: management / screening / health / briefing / PnL poller — last fired timestamp, expected interval, red after 2× interval.
+- `_busy` flag states: `_managementBusy`, `_screeningBusy`, `_pnlPollBusy`.
+- Queue depths: Telegram queue (max 5), Discord signals pending.
+- RPC latency p50/p99 (rolling 5min), error rate.
+- LLM provider latency, error rate, fallback-model trigger count.
+- HiveMind: last pull, last push, error count.
+- Audit-log write rate (sanity check).
+
+Source: `GET /api/v1/state/summary` for cycle timings + a new `/api/v1/health/probes` endpoint that pings RPC + LLM provider on demand.
+
+### 5.10 Candidates Live View (P1)
+
+Top N current `getTopCandidates` output. Each candidate row:
+- Pair, fee/TVL %, volume, organic, holders, mcap.
+- Pass/reject reasons (hard filters that matter).
+- Smart wallets present (count + list).
+- Indicator preset confirmation.
+- One-click `[Deploy]` button (Tier-2 confirmation, see §11).
+
+Source: `GET /api/v1/candidates` (slow path) or cached.
+
+### 5.11 Lessons & Self-Tuning Panel (P1)
+
+- Recent lessons grouped by category: PINNED (top), ROLE (SCREENER / MANAGER), RECENT.
+- Toggle `[Pin]` / `[Delete]` per lesson.
+- `[AUTO-EVOLVED]` lessons highlighted with the threshold change shown inline.
+- Signal weights summary (top 3 boosted / top 3 decayed signals).
+
+Source: `GET /api/v1/lessons` + `GET /api/v1/state/summary.signal_weights`.
+
+### 5.12 Config Diff & Audit Log (P0)
+
+Two views in one panel:
+
+**Config view**: every `user-config.json` key surfaced in a searchable list with:
+- Current value, default value, type, section (`risk` / `screening` / etc.), description.
+- Inline edit with type-correct widget (number stepper, toggle, select, multiselect, text).
+- Save requires typed reason. Tier-2 confirmation for safety-relevant keys (`maxDeployAmount`, `stopLossPct`, `maxPositions`, anything in `LLM_*`).
+- Revert button shown until next page load.
+
+**Audit log**: every `update_config`, `set_active_strategy`, `addLesson`, `pinLesson`, manual close/claim/swap, pause/resume, with actor (`tool:agent_self_tune`, `tool:user_dashboard`, `tool:user_telegram`, `auto:evolve_thresholds`), before/after diff, reason text. Filterable by actor + key.
+
+Source: `GET /api/v1/config` (current), `GET /api/v1/config/schema` (widget metadata), `GET /api/v1/logs/actions?tool=update_config` (history), `PUT /api/v1/config` (write).
+
+### 5.13 Alerts Inbox (P1)
+
+PagerDuty-style. Each alert has:
+- Severity (info / warn / critical), title, body, `created_at`, `ackable: bool`.
+- Actions: `[Ack]` (move to acknowledged list), `[Silence 1h]` `[Silence 24h]`.
+- Sources: `notifyOutOfRange`, stop-loss trigger, RPC degraded, LLM provider error, HiveMind sync failure, Telegram queue full.
+
+Source: WS `alert.fired` / `alert.acked` events. No REST snapshot needed (alerts live in memory only; persisted to `state.json.recentEvents` if implementer chooses).
+
+### 5.14 REPL drawer (P1)
+
+Right-edge slide-out. Markdown-rendered chat. Each message shows:
+- Role (user / assistant / tool).
+- For tool messages: tool name + args (collapsed by default) + result.
+- Streaming via WebSocket `repl_message` events.
+
+`POST /api/v1/repl` to send. `agent_type` selector: GENERAL (default) / SCREENER / MANAGER.
+
+### 5.15 Wallet panel (P1, on Overview)
+
+Compact card on Overview:
+- SOL balance + 24h delta.
+- Top 5 token balances by USD value.
+- "Auto-swap to SOL on claim" toggle (writes to `autoSwapAfterClaim`).
+
+Source: `GET /api/v1/wallet/balances`.
+
+---
+
+## 6. Per-screen layouts
+
+### 6.1 Overview (`/overview`)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ STATUS STRIP                                                         │
+├──────────────────────────────────────────────────────────────────────┤
+│ ┌────────────────────────────────┬─────────────────────────────────┐ │
+│ │  Equity Curve         8 col    │  Drawdown          4 col        │ │
+│ │  (24h / 7d / 30d / all toggle) │                                 │ │
+│ ├────────────────────────────────┴─────────────────────────────────┤ │
+│ │  Open Positions Table                              12 col        │ │
+│ ├────────────────────────────────┬─────────────────────────────────┤ │
+│ │  P&L Attribution      6 col    │  Per-Pool Performance  6 col    │ │
+│ ├────────────────────────────────┴─────────────────────────────────┤ │
+│ │  Decision Log (compact)   8 col │  Alerts Inbox        4 col     │ │
+│ └────────────────────────────────┴─────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 6.2 Positions (`/positions`)
+
+Tabs: `Open (n)` / `History (m)`. Open tab = the same table from Overview but with all columns visible. History tab = closed positions, sortable by close_reason, PnL, hold time, with filter by reason.
+
+### 6.3 Position detail (`/positions/$address`)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ ← Back   ROCKET-SOL · 8a5pp… · spot · -461→-389 bins                 │
+│ Status: 🟢 IN-RANGE · age 4h 23m · PnL +2.4% · fees $0.83             │
+├──────────────────────────────────────────────────────────────────────┤
+│ Header KPIs row (4 cards): Value | Unclaimed | Fee/IL | TIR %        │
+├──────────────────────────────────────────────────────────────────────┤
+│ Bin distribution chart (active bin marker, range overlay, price)     │
+├──────────────────────────────────────────────────────────────────────┤
+│ Tabs: Ticks | Snapshots | Decisions | Lessons                        │
+└──────────────────────────────────────────────────────────────────────┘
+Actions sticky on right: [Close] [Claim] [Set Instruction] [Swap base]
+```
+
+### 6.4 Pools (`/pools`)
+
+Table view (5.7). Click row → pool detail.
+
+### 6.5 Pool detail (`/pools/$address`)
+
+- Header: pool name, base mint, cooldown countdown.
+- Snapshot trend chart (last 48 snapshots × 5min = 4h, sparkline-style).
+- All deploys table (chronological).
+- Notes editor.
+
+### 6.6 Decisions (`/decisions`)
+
+Decision stream (5.6). Filter by type + actor + date range. Click → inline expand with full payload.
+
+### 6.7 Candidates (`/candidates`)
+
+Live view (5.10). Header `[Run Screening Cycle]` button (kicks `POST /api/v1/screening/run` and streams progress via WS).
+
+### 6.8 Lessons (`/lessons`)
+
+Lessons panel (5.11) + performance summary at top.
+
+### 6.9 LLM (`/llm`)
+
+LLM activity panel (5.8) + per-cycle drilldown.
+
+### 6.10 Health (`/health`)
+
+Bot health panel (5.9). Visually similar to a CI/CD status board: rows = subsystem, columns = last-fired / next-due / status / error count.
+
+### 6.11 Config (`/config`)
+
+Config diff & audit log (5.12). Two tabs: `Settings` / `Audit`.
+
+### 6.12 Audit (`/audit`)
+
+Standalone view of all mutations across the system. Same data as Config audit tab but unfiltered: closes, claims, swaps, pauses, lesson adds, weight recalcs, evolves.
+
+### 6.13 Alerts (`/alerts`)
+
+Full alerts inbox. Three tabs: `Active` / `Acknowledged` / `Silenced`.
+
+### 6.14 REPL drawer (global)
+
+Slide-out from right. Shortcut: `⌘ K` to open. Persists conversation in `localStorage` per browser session.
+
+---
+
+## 7. Visual conventions
+
+### Palette (dark mode default)
+
+| Token | Color | Usage |
+|---|---|---|
+| `--bg` | `#0B0E12` | Page background |
+| `--panel` | `#13171D` | Card / panel background |
+| `--border` | `#1F242C` | Card border, divider |
+| `--text` | `#E5E7EB` | Primary text |
+| `--text-muted` | `#9CA3AF` | Secondary text, labels |
+| `--positive` | `#22C55E` | P&L positive, "in range" |
+| `--negative` | `#EF4444` | P&L negative, errors |
+| `--warning` | `#F59E0B` | OOR, cooldown, degraded |
+| `--info` | `#3B82F6` | Active bin, focus, info badges |
+| `--accent` | shadcn `mist` default | Buttons, focus rings |
+
+**Color rules (non-negotiable):**
+- Never rely on color alone. Every red/green pairs with `▲` / `▼` and `+` / `−` sign.
+- Tabular numerals (`font-variant-numeric: tabular-nums`) on every number in tables and KPI cards.
+- Provide CVD-safe theme toggle (deuteranopia): swap positive→`#0EA5E9` (cyan), negative→`#F97316` (orange).
+
+### Typography
+
+- UI body: `DM Sans Variable` (already installed). 14px base, 1.4 line height.
+- Numerics in tables and KPIs: `Geist Mono Variable` (already installed), 13px in tables, 24px in KPI cards.
+- Headings: `DM Sans Variable` 600, scaled `xs/sm/base/lg/xl/2xl` per Tailwind defaults.
+
+### Density
+
+Bloomberg-leaning but not extreme. Table row height 32px. Card padding 16px. Section gap 16px. KPI card padding 20px.
+
+### Motion
+
+- Value-change transitions ≤200ms, CSS `transition` not JS tween.
+- **Never animate P&L numbers on every tick.** Debounce to 1Hz; use `crossfade` on color change.
+- Shimmer/pulse on cells while a refresh is in-flight; no spinners on background polls.
+- Use `prefers-reduced-motion` to disable all transitions.
+
+### Charts
+
+- **TradingView lightweight-charts** for equity curve, drawdown, per-position PnL ticks, bin distribution. High-perf financial charting library; handles tick streams without stutter.
+- **Recharts** for everything else (attribution stacks, sparklines, bar charts).
+- Sparklines next to every numeric KPI in the status strip and on every position row.
+
+---
+
+## 8. Tech stack & libraries
+
+### Already in `meridian-ui/CLAUDE.md` (use these)
+
+- **TanStack Start** (React SSR framework) + **TanStack Router** (file-based routing).
+- **Tailwind CSS v4.**
+- **shadcn/ui** (style: `base-vega`, base color: `mist`, icons: `lucide`).
+- **DM Sans Variable + Geist Variable** via `@fontsource-variable`.
+- **`@base-ui/react`** headless primitives.
+- **Bun** for package management and dev server.
+
+### To add
+
+| Package | Purpose |
+|---|---|
+| `@tanstack/react-query` | Snapshot fetching + cache. Already included via TanStack Start? Verify. |
+| `lightweight-charts` | Equity curve, drawdown, bin distribution. |
+| `recharts` | Bars, sparklines, attribution stacks. |
+| `zod` | API response validation at the boundary. |
+| `zustand` | Ephemeral UI state (drawer open, modal open, alert silences). |
+| `ws` is N/A — use native `WebSocket` in the browser. |
+| `clsx` + `tailwind-merge` | Already via `src/lib/utils.ts`. |
+| `date-fns` | Time formatting, durations. |
+| `idb-keyval` (optional) | Persist read-only mode + theme + column prefs across sessions if `localStorage` proves limiting. |
+| `framer-motion` (optional, low priority) | Drawer slide animations if Tailwind transitions aren't enough. |
+
+### Scaffolding
+
+`meridian-ui` is currently empty (only `CLAUDE.md`). Scaffold with:
+
+```bash
+cd "/Volumes/Data 2/projects/meridian-ui"
+bunx create-tanstack@latest .   # follow prompts; pick Tailwind + Router + shadcn
+npx shadcn@latest init           # style: base-vega, base color: mist, icon library: lucide
+```
+
+Then add the libraries above. Then build.
+
+### Folder structure (proposed)
+
+```
+src/
+  routes/                 (per §4)
+  components/
+    ui/                   (shadcn primitives, committed)
+    panels/               (one folder per panel from §5)
+      EquityCurve/
+      Drawdown/
+      OpenPositionsTable/
+      ...
+    layout/
+      StatusStrip.tsx
+      LeftNav.tsx
+      ReplDrawer.tsx
+    common/
+      KpiCard.tsx
+      Sparkline.tsx
+      PnlBadge.tsx        (color + sign + glyph, the canonical "show a P&L" component)
+      ConfirmModal.tsx    (Tier-1 + Tier-2 variants)
+      StalenessIndicator.tsx
+      ActorPill.tsx
+  lib/
+    api.ts                (REST client with zod validation)
+    ws.ts                 (WebSocket client + reconnect + sequence-gap detection)
+    queries.ts            (TanStack Query hooks per endpoint)
+    formatters.ts         (formatSol, formatUsd, formatDuration, formatBin)
+    types/                (TS types matching API_SERVER_SPEC.md schemas)
+    stores/               (zustand stores)
+  styles.css
+  router.tsx
+```
+
+---
+
+## 9. Data flow & state management
+
+### Snapshot + stream pattern
+
+For every route:
+1. On mount, fetch snapshot via TanStack Query (`useQuery` with appropriate `queryKey`).
+2. Subscribe to relevant WebSocket events via a hook (`useWsEvents(["pnl_tick", "position.updated"])`).
+3. On each WS event, mutate the query cache (`queryClient.setQueryData`) to patch the snapshot.
+4. If WS disconnects ≥30s, switch to polling at 5s and show banner.
+
+### Gap detection
+
+Server attaches monotonic `seq` to every WS frame. Client tracks `lastSeq` per channel; if a gap is detected, mark snapshot as `stale: true` and re-fetch via TanStack Query (`invalidateQueries`).
+
+### Optimistic UI for mutations
+
+- Close button → optimistic: row gets a "Closing…" overlay, action button disabled.
+- Server replies with `tx.submitted` → row shows tx signature + "Pending confirmation."
+- Server replies with `tx.confirmed` → row removed from open list, appears in history.
+- Server replies with `tx.failed` → optimistic update reverted, error toast.
+
+### Idempotency
+
+Every write request includes a client-generated UUIDv4 in `X-Idempotency-Key`. Server LRU dedupes for 5 minutes. Dashboard generates one per user action (not per retry).
+
+---
+
+## 10. Control actions catalog
+
+Every control action falls into one of three tiers:
+
+| Tier | Confirmation | Examples |
+|---|---|---|
+| Tier 0 (no confirm) | Direct action | Toggle column visibility, change time range, ack alert, silence alert. |
+| Tier 1 (single-step) | Modal with restated action | Close one position, claim fees, set instruction, force screening cycle, force management cycle, edit non-safety config key, pause bot. |
+| Tier 2 (typed) | Modal + typed confirmation | Close all positions, kill switch, manual deploy, swap >5% of wallet balance, edit safety-relevant config (`maxDeployAmount`, `stopLossPct`, `maxPositions`, LLM model swap), enable `self_update`. |
+
+**Modal template (Tier 1):**
+
+> **Close position?**
+>
+> Position: `ROCKET-SOL · 8a5pp…`
+> Current PnL: **+2.4%** ($0.84)
+> Fees earned: $0.83
+> Value: $35.12
+> Reason: [textarea, required]
+>
+> This will broadcast a close transaction. It cannot be undone.
+>
+> `[Cancel]` `[Close position]`
+
+**Modal template (Tier 2):**
+
+> **Close ALL 2 open positions?**
+>
+> Combined value: $70.24
+> Combined fees: $1.66
+> Combined unrealized PnL: +1.8%
+>
+> Type `CLOSE ALL` below to confirm.
+>
+> `[___________]` `[Cancel]` `[Close all]` (disabled until typed string matches)
+
+---
+
+## 11. Real-time event types (canonical)
+
+Defer to `API_SERVER_SPEC.md` §6 for the full event taxonomy. Summary for UI integration:
+
+| Event | Triggers UI update on... |
+|---|---|
+| `pnl_tick` | Open Positions table PnL/Value cells (debounced 1Hz), per-position chart, status strip 24h badge. |
+| `position.updated` | Same as above plus row state color. |
+| `position.opened` | Open Positions table (prepend row), Decision Log (new entry). |
+| `position.closed` | Open Positions table (remove row), History tab, Decision Log, P&L Attribution. |
+| `oor_enter` / `oor_exit` | Row state color, Alerts inbox. |
+| `oor_warn` | Alerts inbox (new alert), Telegram already notified separately. |
+| `trailing_armed` / `trailing_drop_pending` / `trailing_drop_confirmed` | Position detail page banner, Alerts inbox. |
+| `cycle_start` / `cycle_finish` | Status strip "Cycle Xs ago," Health panel, LLM panel. |
+| `tool_call_start` / `tool_call_finish` | Live during a cycle, shown in REPL drawer (if it's a REPL session) or in the Cycle log on Health page. |
+| `decision_appended` | Decision Log stream (prepend), Overview compact decision log. |
+| `lesson_added` | Lessons panel. |
+| `config_changed` | Config audit tab, Audit page, status strip flash. |
+| `weights_recalculated` | Lessons panel signal-weights section. |
+| `paused` / `resumed` | Status strip pill update. |
+| `alert.fired` / `alert.acked` | Alerts inbox + nav badge count. |
+| `error` | Toast notification (warn level), Alerts inbox (critical level). |
+
+---
+
+## 12. Anti-patterns the implementation must avoid
+
+These are mistakes specifically called out by the research; they correspond to real failure modes in trading dashboards.
+
+1. **No staleness indicator on panels.** Every panel must show "Last updated Ns ago." Header turns amber at 2× expected interval, red at 5×.
+2. **P&L number flicker.** Debounce P&L cell updates to ≤1Hz with CSS transitions. Never run a tween on every tick.
+3. **No way to ack/silence alerts.** Every alert needs `[Ack]` and `[Silence]`.
+4. **Hidden config mutations.** Every `update_config` (LLM tool OR auto-evolve OR Telegram) MUST appear in the Audit log within 1 second of happening.
+5. **No audit log of human overrides.** Dashboard close/claim/swap, Telegram `/close`, every mutation has an actor field.
+6. **Polling without indicator.** When WS drops to polling fallback, show a "Polling fallback (5s)" pill in the status strip.
+7. **Vague confirmations.** Never use "Are you sure? Yes/No." Always restate the action with the specific values it'll affect.
+8. **No idempotency.** Double-clicking "Close" must not submit two transactions. Use idempotency keys on every mutation.
+9. **Showing only unrealized P&L without IL attribution.** A position can show +5% unrealized while net of IL is −3%. Always show both.
+10. **Burying the kill switch.** PAUSE is one click from anywhere; KILL is two clicks with typed confirmation.
+11. **Showing fee APR without time-in-range.** A 200% APR position out of range for 80% of its life earns 40% effective APR. Always show both.
+12. **No row-level "why" on candidate rejections.** The decision log's `rejected[]` is the bot's most valuable explainability surface — surface it inline, don't hide it behind another click.
+
+---
+
+## 13. Implementation phases
+
+### Phase 0 — Scaffold (½ day)
+
+- Scaffold TanStack Start project.
+- Add shadcn (`base-vega` / `mist`).
+- Set up Tailwind v4 with the palette tokens from §7.
+- Create `src/lib/api.ts` with a thin fetch wrapper + zod validation.
+- Create `src/lib/ws.ts` with reconnect + seq-gap detection.
+- Create `src/components/layout/{StatusStrip,LeftNav,ReplDrawer}.tsx` skeletons (no data yet).
+- Empty routes for all of §4 with placeholder content.
+
+**Exit criteria:** `bun dev` shows the shell with left nav and empty status strip, navigating between empty routes works.
+
+### Phase 1 — MVP (3–4 days)
+
+Ship enough that the operator stops checking Telegram for desk-bound use.
+
+- Status Strip (live, WS-driven).
+- Overview page: Equity Curve, Drawdown, Open Positions Table, Decision Log compact.
+- Positions page: full Open Positions Table + History tab.
+- Position detail page (header KPIs + Ticks tab only).
+- Decisions page (full feed + expand).
+- Pools page (table only, no detail).
+- Health page (cron heartbeats + RPC latency).
+- Config page (read-only).
+- Pause / resume / close-one / claim with Tier-1 confirms.
+
+**Exit criteria:** the five "≤10s" and five "≤2-click" success criteria in §1 all pass.
+
+### Phase 2 — Polish + power user (2–3 days)
+
+- P&L Attribution panel.
+- Per-Pool Performance table + pool detail page.
+- LLM Activity panel.
+- Lessons panel.
+- Config edit + audit tab (Tier-1 + Tier-2 confirms).
+- Audit page.
+- Alerts inbox.
+- Bin distribution chart on position detail.
+- CVD-safe theme toggle.
+- Read-only mode toggle.
+- Optimistic UI for mutations.
+- Idempotency key generation.
+
+**Exit criteria:** the "≤4-click" success criteria in §1 pass. All anti-patterns in §12 verified absent.
+
+### Phase 3 — REPL + Candidates + extras (1–2 days)
+
+- REPL drawer with streaming.
+- Candidates live view with one-click deploy (Tier-2).
+- Wallet panel on Overview.
+- Sparklines on every KPI.
+- Keyboard shortcuts (⌘K for REPL, / for search, P for pause).
+- Light mode (if time).
+
+---
+
+## 14. References (research)
+
+Top sources the deep-research surfaced. Implementation team should skim before building each panel.
+
+1. **Hummingbot Dashboard** — portfolio & instances pages, kill-switch UX. [Portfolio](https://hummingbot.org/dashboard/portfolio/), [Instances](https://hummingbot.org/dashboard/instances/), [Kill Switch](https://hummingbot.org/client/global-configs/kill-switch/)
+2. **Freqtrade FreqUI** — equity curve with deposits/withdrawals + Underwater drawdown chart. [FreqUI](https://www.freqtrade.io/en/stable/freq-ui/), [Plotting](https://www.freqtrade.io/en/stable/plotting/)
+3. **Krystal LP Management — Profile Dashboard** — LP-position tables, P&L attribution, 7-day APR display. [Profile Dashboard](https://docs.krystal.app/products/liquidity-management/profile-dashboard), [LP Management](https://docs.krystal.app/products/liquidity-management/lp-management)
+4. **Bloomberg UX — Color Accessibility on the Terminal** — CVD-safe color choices in dense dark dashboards. [Article](https://www.bloomberg.com/company/stories/designing-the-terminal-for-color-accessibility/)
+5. **Google SRE — Four Golden Signals** — foundation for the Health panel. [Article](https://www.splunk.com/en_us/blog/learn/sre-metrics-four-golden-signals-of-monitoring.html)
+
+Algo-trading metric formulas (Sharpe, Sortino, Calmar, profit factor): [tradingwyckoff](https://tradingwyckoff.com/en/algorithmic-trading/advanced-trading-metrics/), [nurp 5 metrics](https://nurp.com/algorithmic-trading-blog/5-key-metrics-automated-trading-systems/)
+
+Concentrated liquidity (fee APR, time-in-range, realized IL): [coindataschool quickstart](https://bookdown.org/coindataschool/clp/quickstart.html)
+
+Destructive-action modal UX: [UX Psychology](https://uxpsychology.substack.com/p/how-to-design-better-destructive)
+
+---
+
+## 15. Open questions for the implementing session
+
+Don't block on these — make a reasonable call and note it in PR description.
+
+1. **PnL tick cadence in UI** — bot polls every 3s. Render at every tick (with 1Hz debounce on visible cells) or downsample server-side to 1Hz? Recommendation: push every tick, debounce client-side, lets future charts show finer granularity.
+2. **REPL streaming protocol** — same WS as everything else (multiplexed by `repl_session_id`) or a separate WS per REPL session? Recommendation: same WS, multiplexed.
+3. **Snapshot freshness for `pool-memory.json` snapshots** — these are appended on every cycle (5min × 48 entries = 4h window). Render as a chart, table, or both? Recommendation: chart on pool detail page, table only when expanded.
+4. **Equity curve granularity** — daily aggregates, per-close events, or both overlaid? Recommendation: per-close events for the line, daily aggregates as the histogram overlay.
+5. **Where does the "kill switch" actually go?** — graceful `SIGTERM` to the bot process is hard from the dashboard without a process supervisor. Recommendation: KILL = `POST /control/pause` + close all positions. True process termination is operator's job (Ctrl-C in the terminal).
+
+---
+
+## 16. Out of scope (explicitly)
+
+- Multi-bot / multi-tenant.
+- Mobile responsive design beyond "doesn't break."
+- Public/cloud deployment.
+- Trading from the dashboard (deploy + close are explicitly here; arbitrary on-chain calls are not).
+- LLM provider management (model switching, API key rotation) — use Telegram or edit `user-config.json`.
+- Discord-listener controls — separate process, has its own logs.
+- Replacing `cli.js` — CLI remains the canonical scripting surface.
+  </script>
+
+  <script>
+    // Minimal self-contained markdown renderer.
+    // Supports: ATX headings, paragraphs, ul/ol, GFM tables, fenced code, inline code,
+    // bold, italic, links, blockquotes, horizontal rules. No external deps (no SRI risk).
+    function esc(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function inlineMd(s) {
+      // Order matters: inline code first so its contents aren't further parsed.
+      const codes = [];
+      s = s.replace(/`([^`\n]+)`/g, (_, c) => {
+        codes.push(esc(c));
+        return ` C${codes.length - 1} `;
+      });
+      s = esc(s);
+      // Links [text](url)
+      s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`);
+      // Bold then italic (bold first to avoid * collisions)
+      s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+      // Restore code spans
+      s = s.replace(/ C(\d+) /g, (_, i) => `<code>${codes[+i]}</code>`);
+      return s;
+    }
+    function renderMd(src) {
+      const lines = src.replace(/\r\n/g, "\n").split("\n");
+      const out = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        // Fenced code block
+        if (/^```/.test(line)) {
+          const lang = line.slice(3).trim();
+          const buf = [];
+          i++;
+          while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+          i++;
+          out.push(`<pre><code class="lang-${esc(lang)}">${esc(buf.join("\n"))}</code></pre>`);
+          continue;
+        }
+        // Heading
+        const h = /^(#{1,6})\s+(.*)$/.exec(line);
+        if (h) {
+          const lvl = h[1].length;
+          out.push(`<h${lvl}>${inlineMd(h[2])}</h${lvl}>`);
+          i++;
+          continue;
+        }
+        // Horizontal rule
+        if (/^---+\s*$/.test(line)) {
+          out.push("<hr/>");
+          i++;
+          continue;
+        }
+        // Blockquote (one or more contiguous > lines)
+        if (/^>\s?/.test(line)) {
+          const buf = [];
+          while (i < lines.length && /^>\s?/.test(lines[i])) {
+            buf.push(lines[i].replace(/^>\s?/, ""));
+            i++;
+          }
+          out.push(`<blockquote>${renderMd(buf.join("\n"))}</blockquote>`);
+          continue;
+        }
+        // GFM table: header line + separator + body lines
+        if (line.includes("|") && i + 1 < lines.length && /^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(lines[i + 1])) {
+          const splitRow = (r) => r.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map(c => c.trim());
+          const header = splitRow(line);
+          i += 2;
+          const rows = [];
+          while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
+            rows.push(splitRow(lines[i]));
+            i++;
+          }
+          let html = "<table><thead><tr>";
+          header.forEach(h => html += `<th>${inlineMd(h)}</th>`);
+          html += "</tr></thead><tbody>";
+          rows.forEach(r => {
+            html += "<tr>";
+            r.forEach(c => html += `<td>${inlineMd(c)}</td>`);
+            html += "</tr>";
+          });
+          html += "</tbody></table>";
+          out.push(html);
+          continue;
+        }
+        // Unordered list
+        if (/^[-*]\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+            // Gather continuation lines (indented or non-empty non-list non-heading)
+            const buf = [lines[i].replace(/^[-*]\s+/, "")];
+            i++;
+            while (i < lines.length && /^(\s{2,}|\t)/.test(lines[i])) {
+              buf.push(lines[i].replace(/^(\s{2,}|\t)/, ""));
+              i++;
+            }
+            items.push(buf.join("\n"));
+          }
+          out.push("<ul>" + items.map(it => `<li>${inlineMd(it)}</li>`).join("") + "</ul>");
+          continue;
+        }
+        // Ordered list
+        if (/^\d+\.\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+            const buf = [lines[i].replace(/^\d+\.\s+/, "")];
+            i++;
+            while (i < lines.length && /^(\s{2,}|\t)/.test(lines[i])) {
+              buf.push(lines[i].replace(/^(\s{2,}|\t)/, ""));
+              i++;
+            }
+            items.push(buf.join("\n"));
+          }
+          out.push("<ol>" + items.map(it => `<li>${inlineMd(it)}</li>`).join("") + "</ol>");
+          continue;
+        }
+        // Blank line
+        if (line.trim() === "") { i++; continue; }
+        // Paragraph (gather contiguous non-special lines)
+        const buf = [line];
+        i++;
+        while (i < lines.length && lines[i].trim() !== "" &&
+               !/^(#{1,6}\s|```|---+\s*$|>\s?|[-*]\s+|\d+\.\s+)/.test(lines[i]) &&
+               !(lines[i].includes("|") && i + 1 < lines.length && /^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(lines[i + 1]))) {
+          buf.push(lines[i]);
+          i++;
+        }
+        out.push(`<p>${inlineMd(buf.join(" "))}</p>`);
+      }
+      return out.join("\n");
+    }
+
+    const md = document.getElementById("prd-source").textContent;
+    const content = document.getElementById("content");
+    content.innerHTML = renderMd(md);
+
+    // Add ids to all headings (h2/h3/h4)
+    const tocEl = document.getElementById("toc");
+    const slug = (s) => s.toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+    const headings = content.querySelectorAll("h2, h3, h4");
+    headings.forEach((h) => {
+      const id = slug(h.textContent);
+      h.id = id;
+
+      // Only include h2 and selected h3 (not h4) in TOC for readability
+      if (h.tagName === "H2" || h.tagName === "H3") {
+        const li = document.createElement("li");
+        li.className = "lvl-" + h.tagName.charAt(1);
+        const a = document.createElement("a");
+        a.href = "#" + id;
+        a.textContent = h.textContent;
+        li.appendChild(a);
+        tocEl.appendChild(li);
+      }
+    });
+
+    // Highlight active TOC entry on scroll
+    const tocLinks = Array.from(tocEl.querySelectorAll("a"));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            tocLinks.forEach((l) => l.classList.toggle("active", l.getAttribute("href") === "#" + id));
+          }
+        });
+      },
+      { rootMargin: "-20% 0px -70% 0px" }
+    );
+    headings.forEach((h) => observer.observe(h));
+  </script>
+</body>
+</html>
